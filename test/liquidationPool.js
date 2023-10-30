@@ -1,16 +1,16 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe('Liquidation Pools', async () => {
-  let user, LiquidationPoolFactory, MockERC20Factory, LiquidationPool, TST, EUROs;
+describe('LiquidationPool', async () => {
+  let user, MockERC20Factory, LiquidationPoolManager, LiquidationPool, TST, EUROs;
 
   beforeEach(async () => {
     [ user ] = await ethers.getSigners();
     MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await MockERC20Factory.deploy('The Standard EURO', 'EUROs', 18);
-    LiquidationPoolFactory = await ethers.getContractFactory('LiquidationPool');
-    LiquidationPool = await (LiquidationPoolFactory).deploy(TST.address, EUROs.address);
+    LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(TST.address, EUROs.address);
+    LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
 
   describe('position', async () => {
