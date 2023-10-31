@@ -29,7 +29,7 @@ contract LiquidationPool is ILiquidationPool {
     
     function position(address _holder) external view returns(Position memory _position) {
         _position = positions[_holder];
-        if (tstTotal > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
+        if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
     }
 
     function uniquelyAddToHolders() private {
@@ -75,6 +75,8 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
+        ILiquidationPoolManager(manager).distributeFees();
+
         if (_tstVal > 0 && _tstVal <= positions[msg.sender].TST) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
             positions[msg.sender].TST -= _tstVal;
@@ -91,9 +93,11 @@ contract LiquidationPool is ILiquidationPool {
 
     function distributeFees(uint256 _amount) external {
         IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
-        for (uint256 i = 0; i < holders.length; i++) {
-            address holder = holders[i];
-            positions[holder].EUROs += _amount * positions[holder].TST / tstTotal;
+        if (tstTotal > 0) {
+            for (uint256 i = 0; i < holders.length; i++) {
+                address holder = holders[i];
+                positions[holder].EUROs += _amount * positions[holder].TST / tstTotal;
+            }
         }
     }
 }

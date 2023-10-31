@@ -15,24 +15,34 @@ describe('LiquidationPool', async () => {
 
   describe('position', async () => {
     it('provides the position data for given user', async () => {
-      const position = await LiquidationPool.position(user.address);
+      const position = await LiquidationPool.position(user1.address);
 
       expect(position.TST).to.equal('0');
       expect(position.EUROs).to.equal('0');
     });
 
-    it('includes unclaimed EUROs fees if due???', async () => {
+    it('includes unclaimed EUROs fees if due', async () => {
       const tstVal = ethers.utils.parseEther('1000');
       const fees = ethers.utils.parseEther('100');
 
-      await TST.mint(user.address, tstVal);
+      await TST.mint(user1.address, tstVal);
       await TST.approve(LiquidationPool.address, tstVal);
       await LiquidationPool.increasePosition(tstVal, 0);
       await EUROs.mint(LiquidationPoolManager.address, fees);
 
-      const position = await LiquidationPool.position(user.address);
+      const position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(tstVal);
       expect(position.EUROs).to.equal(fees);
+    });
+
+    it('does not include unclaimed EUROs fees for non-holders', async () => {
+      const fees = ethers.utils.parseEther('100');
+
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      const position = await LiquidationPool.position(user1.address);
+      expect(position.TST).to.equal(0);
+      expect(position.EUROs).to.equal(0);
     });
   });
 
@@ -42,13 +52,13 @@ describe('LiquidationPool', async () => {
       const tstVal = ethers.utils.parseEther('1000');
       const eurosVal = ethers.utils.parseEther('500');
 
-      await TST.mint(user.address, balance);
-      await EUROs.mint(user.address, balance);
+      await TST.mint(user1.address, balance);
+      await EUROs.mint(user1.address, balance);
       
       let increase = LiquidationPool.increasePosition(tstVal, eurosVal);
       await expect(increase).to.be.revertedWithCustomError(MockERC20Factory, 'ERC20InsufficientAllowance')
 
-      let position = await LiquidationPool.position(user.address);
+      let position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal('0');
       expect(position.EUROs).to.equal('0');
 
@@ -58,7 +68,7 @@ describe('LiquidationPool', async () => {
       increase = LiquidationPool.increasePosition(tstVal, eurosVal);
       await expect(increase).not.to.be.reverted;
 
-      position = await LiquidationPool.position(user.address);
+      position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(tstVal);
       expect(position.EUROs).to.equal(eurosVal);
 
@@ -66,7 +76,7 @@ describe('LiquidationPool', async () => {
       increase = LiquidationPool.increasePosition(tstVal, 0);
       await expect(increase).not.to.be.reverted;
 
-      position = await LiquidationPool.position(user.address);
+      position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(tstVal.mul(2));
       expect(position.EUROs).to.equal(eurosVal);
 
@@ -74,12 +84,12 @@ describe('LiquidationPool', async () => {
       increase = LiquidationPool.increasePosition(0, eurosVal);
       await expect(increase).not.to.be.reverted;
 
-      position = await LiquidationPool.position(user.address);
+      position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(tstVal.mul(2));
       expect(position.EUROs).to.equal(eurosVal.mul(2));
     });
 
-    it.only('triggers a distribution of fees before increasing position', async () => {
+    it('triggers a distribution of fees before increasing position', async () => {
       let tstStakeValue = ethers.utils.parseEther('10000');
       await TST.mint(user1.address, tstStakeValue);
       await TST.connect(user1).approve(LiquidationPool.address, tstStakeValue);
@@ -124,68 +134,90 @@ describe('LiquidationPool', async () => {
       // = 10 + 5 = 15 EUROs
       position = await LiquidationPool.position(user1.address);
       expect(position.EUROs).to.equal(ethers.utils.parseEther('15'));
-      console.log(position)
 
       // received 90 EUROs in first round
       // now has 45% of pool (90000 from 200000)
       // 90 + 45 = 135 EUROs
       position = await LiquidationPool.position(user2.address);
       expect(position.EUROs).to.equal(ethers.utils.parseEther('135'));
-      console.log(position)
 
       // should receive 50% of second round of fees
       // = 50% of 100 = 50 EUROs
       position = await LiquidationPool.position(user3.address);
       expect(position.EUROs).to.equal(ethers.utils.parseEther('50'));
-      console.log(position)
     });
   });
 
   describe('decrease position', async () => {
     it('allows decreasing position by one or both assets', async () => {
       const balance = ethers.utils.parseEther('10000');
-      await TST.mint(user.address, balance);
-      await EUROs.mint(user.address, balance);
+      await TST.mint(user1.address, balance);
+      await EUROs.mint(user1.address, balance);
 
       await TST.approve(LiquidationPool.address, balance);
       await EUROs.approve(LiquidationPool.address, balance);
 
       await LiquidationPool.increasePosition(balance, balance);
 
-      expect(await TST.balanceOf(user.address)).to.equal(0);
-      expect(await EUROs.balanceOf(user.address)).to.equal(0);
+      expect(await TST.balanceOf(user1.address)).to.equal(0);
+      expect(await EUROs.balanceOf(user1.address)).to.equal(0);
 
       const decreaseValue = balance.div(2);
       await LiquidationPool.decreasePosition(decreaseValue, decreaseValue);
 
-      let position = await LiquidationPool.position(user.address);
+      let position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(balance.sub(decreaseValue));
       expect(position.EUROs).to.equal(balance.sub(decreaseValue));
 
-      expect(await TST.balanceOf(user.address)).to.equal(decreaseValue);
-      expect(await EUROs.balanceOf(user.address)).to.equal(decreaseValue);
+      expect(await TST.balanceOf(user1.address)).to.equal(decreaseValue);
+      expect(await EUROs.balanceOf(user1.address)).to.equal(decreaseValue);
 
       await LiquidationPool.decreasePosition(decreaseValue, 0);
 
-      position = await LiquidationPool.position(user.address);
+      position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(0);
       expect(position.EUROs).to.equal(balance.sub(decreaseValue));
 
-      expect(await TST.balanceOf(user.address)).to.equal(balance);
-      expect(await EUROs.balanceOf(user.address)).to.equal(decreaseValue);
+      expect(await TST.balanceOf(user1.address)).to.equal(balance);
+      expect(await EUROs.balanceOf(user1.address)).to.equal(decreaseValue);
 
       await LiquidationPool.decreasePosition(0, decreaseValue);
 
-      position = await LiquidationPool.position(user.address);
+      position = await LiquidationPool.position(user1.address);
       expect(position.TST).to.equal(0);
       expect(position.EUROs).to.equal(0);
 
-      expect(await TST.balanceOf(user.address)).to.equal(balance);
-      expect(await EUROs.balanceOf(user.address)).to.equal(balance);
+      expect(await TST.balanceOf(user1.address)).to.equal(balance);
+      expect(await EUROs.balanceOf(user1.address)).to.equal(balance);
     });
 
-    xit('triggers a distribution of fees before decreasing position', async () => {
+    it('triggers a distribution of fees before decreasing position', async () => {
+      const tstStake1 = ethers.utils.parseEther('100000');
+      await TST.mint(user1.address, tstStake1);
+      await TST.approve(LiquidationPool.address, tstStake1);
+      await LiquidationPool.increasePosition(tstStake1, 0);
 
+      const tstStake2 = ethers.utils.parseEther('700000');
+      await TST.mint(user2.address, tstStake2);
+      await TST.connect(user2).approve(LiquidationPool.address, tstStake2);
+      await LiquidationPool.connect(user2).increasePosition(tstStake2, 0);
+
+      const fees = ethers.utils.parseEther('20');
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      // user1 should receive 12.5% of fees when they decrease their position;
+      const distributedFees1 = ethers.utils.parseEther('2.5');
+      await LiquidationPool.decreasePosition(tstStake1, distributedFees1);
+      expect(await TST.balanceOf(user1.address)).to.equal(tstStake1);
+      expect(await EUROs.balanceOf(user1.address)).to.equal(distributedFees1);
+
+      // user1 should receive 87.5% of fees when another user decreased position;
+      const distributedFees2 = ethers.utils.parseEther('17.5');
+      expect(await TST.balanceOf(user2.address)).to.equal(0);
+      expect(await EUROs.balanceOf(user2.address)).to.equal(0);
+      const position = await LiquidationPool.position(user2.address);
+      expect(position.TST).to.equal(tstStake2);
+      expect(position.EUROs).to.equal(distributedFees2);
     });
   });
 });
