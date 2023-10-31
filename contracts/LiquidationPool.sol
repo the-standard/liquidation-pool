@@ -15,90 +15,93 @@ contract LiquidationPool is ILiquidationPool {
     address private immutable EUROs;
 
     uint256 private tstTotal;
-    mapping(address => Position) private positions;
-    address[] private holders;
+    Position[] private positions;
     address public manager;
 
-    struct Position { uint256 TST; uint256 EUROs; }
+    struct Position { uint256 TST; uint256 EUROs; address addr; }
 
     constructor(address _TST, address _EUROs) {
         TST = _TST;
         EUROs = _EUROs;
         manager = msg.sender;
     }
+
+    function findPosition(address _holder) private view returns (Position memory, uint256) {
+        for (uint256 i = 0; i < positions.length; i++) {
+            if (positions[i].addr == _holder) return (positions[i], i);
+        }
+    }
     
     function position(address _holder) external view returns(Position memory _position) {
-        _position = positions[_holder];
+        (_position,) = findPosition(_holder);
         if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
     }
 
-    function uniquelyAddToHolders() private {
-        for (uint256 i = 0; i < holders.length; i++) if (holders[i] == msg.sender) return;
-        holders.push(msg.sender);
+    function empty(Position memory _position) private view returns (bool) {
+        return _position.TST == 0 && _position.EUROs == 0;
     }
 
-    function emptyPosition() private view returns (bool) {
-        return positions[msg.sender].TST == 0 && positions[msg.sender].EUROs == 0;
+    function deletePosition(uint256 _index) private {
+        positions[_index] = positions[positions.length - 1];
+        positions.pop();
+    }
+
+    function savePosition(Position memory _position, uint256 _index) private {
+        if (empty(_position)) {
+            deletePosition(_index);
+        } else if (_position.addr == address(0)) {
+            _position.addr = msg.sender;
+            positions.push(_position);
+        } else {
+            positions[_index] = _position;
+        }
     }
 
     function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
 
-        if (emptyPosition()) uniquelyAddToHolders();
+        (Position memory _position, uint256 _index) = findPosition(msg.sender);
 
         if (_tstVal > 0) {
             IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
-            positions[msg.sender].TST += _tstVal;
+            _position.TST += _tstVal;
             tstTotal += _tstVal;
         }
 
         if (_eurosVal > 0) {
             IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
-            positions[msg.sender].EUROs += _eurosVal;
+            _position.EUROs += _eurosVal;
         }
-    }
 
-    function indexOf(address _item) private view returns (uint256 _index) {
-        bool found;
-        for (uint256 i = 0; i < holders.length; i++) {
-            if (holders[i] == _item) {
-                found = true;
-                _index = i;
-            }
-        }
-        require(found, "err-holder-not-found");
-    }
-
-    function deleteHolder() private {
-        holders[indexOf(msg.sender)] = holders[holders.length - 1];
-        holders.pop();
+        savePosition(_position, _index);
     }
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
-        Position memory _position = positions[msg.sender];
+        (Position memory _position, uint256 _index) = findPosition(msg.sender);
         require(_tstVal <= _position.TST && _eurosVal <= _position.EUROs, "invalid-decr-amount");
 
         if (_tstVal > 0 && _tstVal <= _position.TST) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
-            positions[msg.sender].TST -= _tstVal;
+            _position.TST -= _tstVal;
             tstTotal -= _tstVal;
         }
 
         if (_eurosVal > 0 && _eurosVal <= _position.EUROs) {
             IERC20(EUROs).safeTransfer(msg.sender, _eurosVal);
-            positions[msg.sender].EUROs -= _eurosVal;
+            _position.EUROs -= _eurosVal;
         }
 
-        if (emptyPosition()) deleteHolder();
+        savePosition(_position, _index);
     }
 
     function distributeFees(uint256 _amount) external {
         if (tstTotal > 0) {
             IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
-            for (uint256 i = 0; i < holders.length; i++) {
-                address holder = holders[i];
-                positions[holder].EUROs += _amount * positions[holder].TST / tstTotal;
+            for (uint256 i = 0; i < positions.length; i++) {
+                Position memory _position = positions[i];
+                _position.EUROs += _amount * _position.TST / tstTotal;
+                savePosition(_position, i);
             }
         }
     }
