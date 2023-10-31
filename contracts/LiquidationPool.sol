@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "contracts/interfaces/ILiquidationPool.sol";
+import "contracts/interfaces/ILiquidationPoolManager.sol";
 
 import "hardhat/console.sol";
 
@@ -41,6 +42,8 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
+        ILiquidationPoolManager(manager).distributeFees();
+
         if (emptyPosition()) uniquelyAddToHolders();
 
         if (_tstVal > 0) {
