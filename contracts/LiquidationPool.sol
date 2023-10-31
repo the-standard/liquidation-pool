@@ -76,14 +76,16 @@ contract LiquidationPool is ILiquidationPool {
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
+        Position memory _position = positions[msg.sender];
+        require(_tstVal <= _position.TST && _eurosVal <= _position.EUROs, "invalid-decr-amount");
 
-        if (_tstVal > 0 && _tstVal <= positions[msg.sender].TST) {
+        if (_tstVal > 0 && _tstVal <= _position.TST) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
             positions[msg.sender].TST -= _tstVal;
             tstTotal -= _tstVal;
         }
 
-        if (_eurosVal > 0 && _eurosVal <= positions[msg.sender].EUROs) {
+        if (_eurosVal > 0 && _eurosVal <= _position.EUROs) {
             IERC20(EUROs).safeTransfer(msg.sender, _eurosVal);
             positions[msg.sender].EUROs -= _eurosVal;
         }
@@ -92,8 +94,8 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function distributeFees(uint256 _amount) external {
-        IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
         if (tstTotal > 0) {
+            IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
             for (uint256 i = 0; i < holders.length; i++) {
                 address holder = holders[i];
                 positions[holder].EUROs += _amount * positions[holder].TST / tstTotal;

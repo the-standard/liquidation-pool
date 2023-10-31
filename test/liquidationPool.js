@@ -219,5 +219,23 @@ describe('LiquidationPool', async () => {
       expect(position.TST).to.equal(tstStake2);
       expect(position.EUROs).to.equal(distributedFees2);
     });
+
+    it('does not allow decreasing beyond position value, even with assets in pool', async () => {
+      const tstStake1 = ethers.utils.parseEther('10000');
+      await TST.mint(user1.address, tstStake1);
+      await TST.approve(LiquidationPool.address, tstStake1);
+      await LiquidationPool.increasePosition(tstStake1, 0);
+
+      const tstStake2 = ethers.utils.parseEther('20000');
+      await TST.mint(user2.address, tstStake2);
+      await TST.connect(user2).approve(LiquidationPool.address, tstStake2);
+      await LiquidationPool.connect(user2).increasePosition(tstStake2, 0);
+
+      // user1 can't take out 20000 with only 10000 of their own staked
+      await expect(LiquidationPool.decreasePosition(tstStake2, 0)).to.be.revertedWith('invalid-decr-amount');
+
+      const fees = ethers.utils.parseEther('500');
+      await expect(LiquidationPool.decreasePosition(0, ethers.utils.parseEther('500'))).to.be.revertedWith('invalid-decr-amount');
+    });
   });
 });

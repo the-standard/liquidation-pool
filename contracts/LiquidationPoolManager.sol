@@ -18,7 +18,9 @@ contract LiquidationPoolManager {
     }
 
     function distributeFees() external {
-        IERC20(EUROs).approve(pool, IERC20(EUROs).balanceOf(address(this)));
-        LiquidationPool(pool).distributeFees(IERC20(EUROs).balanceOf(address(this)));
+        IERC20 eurosToken = IERC20(EUROs);
+        uint256 balance = eurosToken.balanceOf(address(this));
+        eurosToken.approve(pool, balance);
+        LiquidationPool(pool).distributeFees(balance);
     }
 }
