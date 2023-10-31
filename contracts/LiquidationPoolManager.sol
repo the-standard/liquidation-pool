@@ -12,7 +12,7 @@ contract LiquidationPoolManager {
     address private immutable TST;
     
     constructor(address _TST, address _EUROs) {
-        pool = address(new LiquidationPool(_TST, _EUROs, address(this)));
+        pool = address(new LiquidationPool(_TST, _EUROs));
         TST = _TST;
         EUROs = _EUROs;
     }

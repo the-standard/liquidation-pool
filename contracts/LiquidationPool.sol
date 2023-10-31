@@ -16,16 +16,19 @@ contract LiquidationPool is ILiquidationPool {
     uint256 private tstTotal;
     mapping(address => Position) private positions;
     address[] private holders;
+    address public manager;
 
     struct Position { uint256 TST; uint256 EUROs; }
 
-    constructor(address _TST, address _EUROs, address _manager) {
+    constructor(address _TST, address _EUROs) {
         TST = _TST;
         EUROs = _EUROs;
+        manager = msg.sender;
     }
     
-    function position(address _holder) external view returns(Position memory) {
-        return positions[_holder];
+    function position(address _holder) external view returns(Position memory _position) {
+        _position = positions[_holder];
+        if (tstTotal > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
     }
 
     function uniquelyAddToHolders() private {

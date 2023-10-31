@@ -20,6 +20,20 @@ describe('LiquidationPool', async () => {
       expect(position.TST).to.equal('0');
       expect(position.EUROs).to.equal('0');
     });
+
+    it('includes unclaimed EUROs fees if due???', async () => {
+      const tstVal = ethers.utils.parseEther('1000');
+      const fees = ethers.utils.parseEther('100');
+
+      await TST.mint(user.address, tstVal);
+      await TST.approve(LiquidationPool.address, tstVal);
+      await LiquidationPool.increasePosition(tstVal, 0);
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      const position = await LiquidationPool.position(user.address);
+      expect(position.TST).to.equal(tstVal);
+      expect(position.EUROs).to.equal(fees);
+    });
   });
 
   describe('increase position', async () => {
@@ -64,6 +78,10 @@ describe('LiquidationPool', async () => {
       expect(position.TST).to.equal(tstVal.mul(2));
       expect(position.EUROs).to.equal(eurosVal.mul(2));
     });
+
+    xit('triggers a distribution of fees before increasing position', async () => {
+
+    });
   });
 
   describe('decrease position', async () => {
@@ -107,6 +125,10 @@ describe('LiquidationPool', async () => {
 
       expect(await TST.balanceOf(user.address)).to.equal(balance);
       expect(await EUROs.balanceOf(user.address)).to.equal(balance);
+    });
+
+    xit('triggers a distribution of fees before decreasing position', async () => {
+
     });
   });
 });
