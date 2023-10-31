@@ -14,7 +14,6 @@ contract LiquidationPool is ILiquidationPool {
     address private immutable TST;
     address private immutable EUROs;
 
-    uint256 private tstTotal;
     Position[] private positions;
     address public manager;
 
@@ -26,6 +25,24 @@ contract LiquidationPool is ILiquidationPool {
         manager = msg.sender;
     }
 
+    modifier onlyManager {
+        require(msg.sender == manager, "err-invalid-user");
+        _;
+    }
+
+    function stake(Position memory _position) private pure returns (uint256) {
+        return _position.TST > _position.EUROs ? _position.EUROs : _position.TST;
+    }
+
+    function stakeTotals() private view returns (uint256 _tst, uint256 _euros, uint256 _stakes) {
+        for (uint256 i = 0; i < positions.length; i++) {
+            Position memory _position = positions[i];
+            _tst += _position.TST;
+            _euros += _position.EUROs;
+            _stakes += stake(_position);
+        }
+    }
+
     function findPosition(address _holder) private view returns (Position memory, uint256) {
         for (uint256 i = 0; i < positions.length; i++) {
             if (positions[i].addr == _holder) return (positions[i], i);
@@ -34,6 +51,7 @@ contract LiquidationPool is ILiquidationPool {
     
     function position(address _holder) external view returns(Position memory _position) {
         (_position,) = findPosition(_holder);
+        (uint256 tstTotal,,) = stakeTotals();
         if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
     }
 
@@ -65,7 +83,6 @@ contract LiquidationPool is ILiquidationPool {
         if (_tstVal > 0) {
             IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
             _position.TST += _tstVal;
-            tstTotal += _tstVal;
         }
 
         if (_eurosVal > 0) {
@@ -78,13 +95,13 @@ contract LiquidationPool is ILiquidationPool {
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
+
         (Position memory _position, uint256 _index) = findPosition(msg.sender);
         require(_tstVal <= _position.TST && _eurosVal <= _position.EUROs, "invalid-decr-amount");
 
         if (_tstVal > 0 && _tstVal <= _position.TST) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
             _position.TST -= _tstVal;
-            tstTotal -= _tstVal;
         }
 
         if (_eurosVal > 0 && _eurosVal <= _position.EUROs) {
@@ -95,7 +112,8 @@ contract LiquidationPool is ILiquidationPool {
         savePosition(_position, _index);
     }
 
-    function distributeFees(uint256 _amount) external {
+    function distributeFees(uint256 _amount) external onlyManager {
+        (uint256 tstTotal,,) = stakeTotals();
         if (tstTotal > 0) {
             IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
             for (uint256 i = 0; i < positions.length; i++) {
