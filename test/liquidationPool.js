@@ -9,7 +9,7 @@ describe('LiquidationPool', async () => {
     MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await MockERC20Factory.deploy('The Standard EURO', 'EUROs', 18);
-    LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(TST.address, EUROs.address);
+    LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(TST.address, EUROs.address, ethers.constants.AddressZero, ethers.constants.AddressZero);
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
 
