@@ -16,8 +16,8 @@ contract LiquidationPoolManager {
     address private immutable smartVaultManager;
     address private immutable tokenManager;
     
-    constructor(address _TST, address _EUROs, address _smartVaultManager, address _tokenManager) {
-        pool = address(new LiquidationPool(_TST, _EUROs));
+    constructor(address _TST, address _EUROs, address _smartVaultManager, address _tokenManager, address _eurUsd) {
+        pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd));
         TST = _TST;
         EUROs = _EUROs;
         smartVaultManager = _smartVaultManager;

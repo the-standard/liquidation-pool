@@ -146,6 +146,10 @@ describe('LiquidationPool', async () => {
       position = await LiquidationPool.position(user3.address);
       expect(position.EUROs).to.equal(ethers.utils.parseEther('50'));
     });
+
+    xit('does not distribute fees if there is no TST staked', async () => {
+
+    });
   });
 
   describe('decrease position', async () => {

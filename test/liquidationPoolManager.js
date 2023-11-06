@@ -3,22 +3,32 @@ const { ethers } = require("hardhat");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TST, EUROs,
-  WBTC, USDC, holder1, holder2, holder3, holder4, holder5;
+  WBTC, USDC, holder1, holder2, holder3, holder4, holder5, MockERC20Factory;
+
+  const mockTokenManager = async _ => {
+    WBTC = await MockERC20Factory.deploy('Wrapped Bitcoin', 'WBTC', 8);
+    USDC = await MockERC20Factory.deploy('USD Coin', 'USDC', 6);
+    const EthUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(190000000000, 'ETH/USD'); // $1900
+    const WbtcUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(3500000000000, 'ETH/USD'); // $35,000
+    const UsdcUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(100000000, 'ETH/USD'); // 1$
+    const TokenManager = await (await ethers.getContractFactory('TokenManager')).deploy(
+      ethers.utils.formatBytes32String('ETH'), EthUsd.address
+    );
+    await TokenManager.addAcceptedToken(WBTC.address, WbtcUsd.address);
+    await TokenManager.addAcceptedToken(USDC.address, UsdcUsd.address);
+    return TokenManager;
+  }
 
   beforeEach(async () => {
     [holder1, holder2, holder3, holder4, holder5] = await ethers.getSigners();
-    const MockERC20Factory = await ethers.getContractFactory('MockERC20');
+    MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
-    EUROs = await MockERC20Factory.deploy('The Standard EURO', 'EUROs', 18);
-    WBTC = await MockERC20Factory.deploy('Wrapped Bitcoin', 'WBTC', 8);
-    USDC = await MockERC20Factory.deploy('USD Coin', 'USDC', 6);
-    MockTokenManager = await (await ethers.getContractFactory('MockTokenManager')).deploy([
-      WBTC.address, USDC.address
-    ]);
-
-    MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(MockTokenManager.address);
+    EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
+    const TokenManager = await mockTokenManager();
+    MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(TokenManager.address);
+    const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(106000000, 'EUR/USD'); // $1.06
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, MockTokenManager.address
+      TST.address, EUROs.address, MockSmartVaultManager.address, TokenManager.address, EurUsd.address
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -90,10 +100,17 @@ describe('LiquidationPoolManager', async () => {
       await expect(LiquidationPoolManager.runLiquidations()).to.be.revertedWith('no-liquidatable-vaults');
     });
 
-    it.only('distributes liquidated assets among stake holders', async () => {
-      await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethers.utils.parseEther('1')});
-      await WBTC.mint(MockSmartVaultManager.address, 1_000_000);
-      await USDC.mint(MockSmartVaultManager.address, 1_000_000_000);
+    const estimateFormatted = amount => {
+      return Math.round(Number(ethers.utils.formatEther(amount)))
+    }
+
+    it.only('distributes liquidated assets among stake holders if there is enough EUROs to purchase', async () => {
+      const ethCollateral = ethers.utils.parseEther('0.5');
+      const wbtcCollateral = 1_000_000;
+      const usdcCollateral = 500_000_000;
+      await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
+      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
 
       const tstStake1 = ethers.utils.parseEther('1000');
       const eurosStake1 = ethers.utils.parseEther('2000');
@@ -111,39 +128,47 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.connect(holder2).approve(LiquidationPool.address, eurosStake2);
       await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2)
 
-      await expect(LiquidationPoolManager.runLiquidations()).not.to.be.reverted;
+      // await expect(LiquidationPoolManager.runLiquidations()).not.to.be.reverted;
+      await LiquidationPoolManager.runLiquidations()
+
+      expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
+      expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtcCollateral);
+      expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(usdcCollateral);
 
       let { _rewards, _position } = await LiquidationPool.position(holder1.address);
       // both uses have 1000 stake value, should receive half each
       expect(_rewards.length).to.equal(3)
-      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethers.utils.parseEther('0.5'));
+      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethers.utils.parseEther('0.25'));
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(500_000);
-      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(500_000_000);
+      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(250_000_000);
       // value of all assets in USD:
-      // 0.05 * 1600 + 0.005 * 35000 + 500 = 80 + 175 + 500 = $755
-      // $755 = €712.26
-      // 91% of 712.26 = 648.16 EUROs
-      // new EUROs stake should be 1000 - 648.16 = 351.84 EUROs
+      // 0.25 * 1900 + 0.005 * 35000 + 500 = 475 + 175 + 250 = $900
+      // $900 = €849
+      // 91% of 849 = 773 EUROs
+      // new EUROs stake should be 2000 - 773 = 1227 EUROs
       expect(_position.TST).to.equal(tstStake1);
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('351.84'));
+      expect(estimateFormatted(_position.EUROs)).to.equal(1227);
 
-      const position2 = await LiquidationPool.position(holder2.address);
       ({ _rewards, _position } = await LiquidationPool.position(holder2.address));
       // both uses have 1000 stake value, should receive half each
       expect(_rewards.length).to.equal(3)
-      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethers.utils.parseEther('0.5'));
+      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethers.utils.parseEther('0.25'));
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(500_000);
-      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(500_000_000);
+      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(250_000_000);
       // value of all assets in USD:
-      // 0.05 * 1600 + 0.005 * 35000 + 500 = 80 + 175 + 500 = $755
-      // $755 = €712.26
-      // 91% of 712.26 = 648.16 EUROs
-      // new EUROs stake should be 1000 - 648.16 = 351.84 EUROs
+      // 0.25 * 1900 + 0.005 * 35000 + 500 = 475 + 175 + 250 = $900
+      // $900 = €849
+      // 91% of 849 = 773 EUROs
+      // new EUROs stake should be 1000 - 773 = 227 EUROs
       expect(_position.TST).to.equal(tstStake2);
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('351.84'));
+      expect(estimateFormatted(_position.EUROs)).to.equal(227);
     });
 
     xit('distributes fees before running liquidation', async () => {
+
+    });
+
+    xit('returns unpurchased liquidated assets to protocol address?', async () => {
 
     });
   });

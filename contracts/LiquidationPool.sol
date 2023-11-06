@@ -1,31 +1,33 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.20;
 
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol" as Chainlink;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "contracts/interfaces/IEUROs.sol";
 import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
-
-import "hardhat/console.sol";
 
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
 
     address private immutable TST;
     address private immutable EUROs;
+    address private immutable eurUsd;
 
     Position[] private positions;
     Reward[] private rewards;
-    ITokenManager.Token[] private rewardTokens;
+    bytes32[] private rewardTokens;
     address public manager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { address holder; bytes32 symbol; uint256 amount; }
 
-    constructor(address _TST, address _EUROs) {
+    constructor(address _TST, address _EUROs, address _eurUsd) {
         TST = _TST;
         EUROs = _EUROs;
+        eurUsd = _eurUsd;
         manager = msg.sender;
     }
 
@@ -53,10 +55,10 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function findReward(address _holder, ITokenManager.Token memory _token) private view returns (Reward memory) {
+    function findReward(address _holder, bytes32 _symbol) private view returns (Reward memory) {
         for (uint256 i = 0; i < rewards.length; i++) {
             Reward memory _reward = rewards[i];
-            if (_reward.holder == _holder && _reward.symbol == _token.symbol) return _reward;
+            if (_reward.holder == _holder && _reward.symbol == _symbol) return _reward;
         }
     }
 
@@ -144,21 +146,40 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
+    function addUniqueRewardToken(bytes32 _symbol) private {
+        for (uint256 i = 0; i < rewardTokens.length; i++) {
+            if (rewardTokens[i] == _symbol) return;
+        }
+        rewardTokens.push(_symbol);
+    }
+
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets) external payable {
+        (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         (,,uint256 stakeTotal) = stakeTotals();
-        for (uint256 i = 0; i < _assets.length; i++) {
-            ILiquidationPoolManager.Asset memory asset = _assets[i];
-            if (asset.amount > 0) {
-                rewardTokens.push(asset.token);
-                if (asset.token.addr != address(0)) {
-                    IERC20(asset.token.addr).safeTransferFrom(manager, address(this), asset.amount);
+        uint256 burnEuros;
+        for (uint256 j = 0; j < positions.length; j++) {
+            Position memory _position = positions[j];
+            uint256 _positionStake = stake(_position);
+            if (_positionStake > 0) {
+                for (uint256 i = 0; i < _assets.length; i++) {
+                    ILiquidationPoolManager.Asset memory asset = _assets[i];
+                    if (asset.amount > 0) {
+                        addUniqueRewardToken(asset.token.symbol);
+                        (,int256 assetPriceUsd,,,) = Chainlink.AggregatorV3Interface(asset.token.clAddr).latestRoundData();
+                        uint256 _portion = asset.amount * _positionStake / stakeTotal;
+                        if (asset.token.addr != address(0)) {
+                            IERC20(asset.token.addr).safeTransferFrom(manager, address(this), _portion);
+                        }
+                        rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
+                        uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) * 91000 / uint256(priceEurUsd) / 100000;
+                        _position.EUROs -= costInEuros;
+                        burnEuros += costInEuros;
+                    }
                 }
-                for (uint256 j = 0; j < positions.length; j++) {
-                    Position memory _position = positions[j];
-                    uint256 _portion = asset.amount * stake(_position) / stakeTotal;
-                    rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
-                }
+                savePosition(_position, j);
             }
         }
+
+        IEUROs(EUROs).burn(address(this), burnEuros);
     }
 }
