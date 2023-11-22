@@ -77,7 +77,7 @@ contract LiquidationPool is ILiquidationPool {
         _rewards = findRewards(_holder);
     }
 
-    function empty(Position memory _position) private view returns (bool) {
+    function empty(Position memory _position) private pure returns (bool) {
         return _position.TST == 0 && _position.EUROs == 0;
     }
 
@@ -179,7 +179,6 @@ contract LiquidationPool is ILiquidationPool {
                 savePosition(_position, j);
             }
         }
-
         IEUROs(EUROs).burn(address(this), burnEuros);
     }
 }
