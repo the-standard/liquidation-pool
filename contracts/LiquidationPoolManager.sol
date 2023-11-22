@@ -13,7 +13,7 @@ contract LiquidationPoolManager {
 
     address private immutable EUROs;
     address private immutable TST;
-    address private immutable smartVaultManager;
+    address public immutable smartVaultManager;
     
     constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd));
@@ -31,9 +31,9 @@ contract LiquidationPoolManager {
         LiquidationPool(pool).distributeFees(balance);
     }
 
-    function runLiquidations() external {
+    function runLiquidation(uint256 _tokenId) external {
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
-        manager.liquidateVaults();
+        manager.liquidateVault(_tokenId);
         ITokenManager.Token[] memory tokens = ITokenManager(manager.tokenManager()).getAcceptedTokens();
         ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
         uint256 ethBalance;

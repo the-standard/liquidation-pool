@@ -1,6 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { mockTokenManager } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, LiquidationPoolManager, LiquidationPool,
@@ -13,7 +13,7 @@ describe('LiquidationPool', async () => {
     EUROs = await MockERC20Factory.deploy('The Standard EURO', 'EUROs', 18);
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(106000000, 'EUR / USD')
     const { TokenManager } = await mockTokenManager();
-    const SmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(TokenManager.address);
+    const SmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
       LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
       TST.address, EUROs.address, SmartVaultManager.address, EurUsd.address
     );

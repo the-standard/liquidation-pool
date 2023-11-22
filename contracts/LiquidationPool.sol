@@ -7,6 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "contracts/interfaces/IEUROs.sol";
 import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
+import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
 contract LiquidationPool is ILiquidationPool {
@@ -154,6 +155,7 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets) external payable {
+        ISmartVaultManager smartVaultManager = ISmartVaultManager(ILiquidationPoolManager(manager).smartVaultManager());
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         (,,uint256 stakeTotal) = stakeTotals();
         uint256 burnEuros;
@@ -171,7 +173,8 @@ contract LiquidationPool is ILiquidationPool {
                             IERC20(asset.token.addr).safeTransferFrom(manager, address(this), _portion);
                         }
                         rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
-                        uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) * 91000 / uint256(priceEurUsd) / 100000;
+                        uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) / uint256(priceEurUsd)
+                            * smartVaultManager.HUNDRED_PC() / smartVaultManager.collateralRate();
                         _position.EUROs -= costInEuros;
                         burnEuros += costInEuros;
                     }
