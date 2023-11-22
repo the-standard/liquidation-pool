@@ -1,34 +1,21 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
+const { mockTokenManager } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
-  let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TST, EUROs,
-  WBTC, USDC, holder1, holder2, holder3, holder4, holder5, MockERC20Factory;
-
-  const mockTokenManager = async _ => {
-    WBTC = await MockERC20Factory.deploy('Wrapped Bitcoin', 'WBTC', 8);
-    USDC = await MockERC20Factory.deploy('USD Coin', 'USDC', 6);
-    const EthUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(190000000000, 'ETH/USD'); // $1900
-    const WbtcUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(3500000000000, 'ETH/USD'); // $35,000
-    const UsdcUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(100000000, 'ETH/USD'); // 1$
-    const TokenManager = await (await ethers.getContractFactory('TokenManager')).deploy(
-      ethers.utils.formatBytes32String('ETH'), EthUsd.address
-    );
-    await TokenManager.addAcceptedToken(WBTC.address, WbtcUsd.address);
-    await TokenManager.addAcceptedToken(USDC.address, UsdcUsd.address);
-    return TokenManager;
-  }
+  let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TokenManager,
+  TST, EUROs, WBTC, USDC, holder1, holder2, holder3, holder4, holder5, MockERC20Factory;
 
   beforeEach(async () => {
     [holder1, holder2, holder3, holder4, holder5] = await ethers.getSigners();
     MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
-    const TokenManager = await mockTokenManager();
+    ({ TokenManager, WBTC, USDC } = await mockTokenManager());
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(TokenManager.address);
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(106000000, 'EUR/USD'); // $1.06
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, TokenManager.address, EurUsd.address
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -71,20 +58,20 @@ describe('LiquidationPoolManager', async () => {
 
       await LiquidationPoolManager.distributeFees();
 
-      let position = await LiquidationPool.position(holder1.address);
-      expect(position.EUROs).to.equal(feeBalance.mul(tstPosition1Value).div(poolTSTTotal));
+      let { _position } = await LiquidationPool.position(holder1.address);
+      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition1Value).div(poolTSTTotal));
 
-      position = await LiquidationPool.position(holder2.address);
-      expect(position.EUROs).to.equal(feeBalance.mul(tstPosition2Value).div(poolTSTTotal));
+      ({ _position } = await LiquidationPool.position(holder2.address));
+      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition2Value).div(poolTSTTotal));
 
-      position = await LiquidationPool.position(holder3.address);
-      expect(position.EUROs).to.equal(feeBalance.mul(tstPosition3Value).div(poolTSTTotal));
+      ({ _position } = await LiquidationPool.position(holder3.address));
+      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition3Value).div(poolTSTTotal));
 
-      position = await LiquidationPool.position(holder4.address);
-      expect(position.EUROs).to.equal(feeBalance.mul(tstPosition4Value).div(poolTSTTotal));
+      ({ _position } = await LiquidationPool.position(holder4.address));
+      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition4Value).div(poolTSTTotal));
 
-      position = await LiquidationPool.position(holder5.address);
-      expect(position.EUROs).to.equal(feeBalance.mul(tstPosition5Value).div(poolTSTTotal));
+      ({ _position } = await LiquidationPool.position(holder5.address));
+      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition5Value).div(poolTSTTotal));
 
       expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
       expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(feeBalance);
@@ -104,7 +91,7 @@ describe('LiquidationPoolManager', async () => {
       return Math.round(Number(ethers.utils.formatEther(amount)))
     }
 
-    it.only('distributes liquidated assets among stake holders if there is enough EUROs to purchase', async () => {
+    it('distributes liquidated assets among stake holders if there is enough EUROs to purchase', async () => {
       const ethCollateral = ethers.utils.parseEther('0.5');
       const wbtcCollateral = 1_000_000;
       const usdcCollateral = 500_000_000;
@@ -128,8 +115,7 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.connect(holder2).approve(LiquidationPool.address, eurosStake2);
       await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2)
 
-      // await expect(LiquidationPoolManager.runLiquidations()).not.to.be.reverted;
-      await LiquidationPoolManager.runLiquidations()
+      await expect(LiquidationPoolManager.runLiquidations()).not.to.be.reverted;
 
       expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
       expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtcCollateral);
@@ -162,6 +148,10 @@ describe('LiquidationPoolManager', async () => {
       // new EUROs stake should be 1000 - 773 = 227 EUROs
       expect(_position.TST).to.equal(tstStake2);
       expect(estimateFormatted(_position.EUROs)).to.equal(227);
+
+      const estimatedBurnedEUROs = 773 + 772;
+      expect(estimateFormatted(await EUROs.totalSupply()))
+        .to.equal(ethers.utils.formatEther(eurosStake1.add(eurosStake2)) - estimatedBurnedEUROs);
     });
 
     xit('distributes fees before running liquidation', async () => {
