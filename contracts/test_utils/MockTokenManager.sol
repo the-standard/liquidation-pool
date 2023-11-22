@@ -3,10 +3,9 @@ pragma solidity ^0.8.20;
 
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol" as Chainlink;
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
-contract TokenManager is ITokenManager {
+contract MockTokenManager is ITokenManager {
     bytes32 private immutable NATIVE;
 
     Token[] private acceptedTokens;
@@ -24,15 +23,6 @@ contract TokenManager is ITokenManager {
         return acceptedTokens;
     }
 
-    function getToken(bytes32 _symbol) external view returns (Token memory token) {
-        for (uint256 i = 0; i < acceptedTokens.length; i++) if (acceptedTokens[i].symbol == _symbol) token = acceptedTokens[i];
-        require(token.symbol == _symbol, "err-invalid-token");
-    }
-
-    function getTokenIfExists(address _tokenAddr) external view returns (Token memory token) {
-        for (uint256 i = 0; i < acceptedTokens.length; i++) if (acceptedTokens[i].addr == _tokenAddr) token = acceptedTokens[i];
-    }
-
     function addAcceptedToken(address _token, address _chainlinkFeed) external {
         ERC20 token = ERC20(_token);
         bytes32 symbol = bytes32(bytes(token.symbol()));
@@ -40,16 +30,5 @@ contract TokenManager is ITokenManager {
         Chainlink.AggregatorV3Interface dataFeed = Chainlink.AggregatorV3Interface(_chainlinkFeed);
         acceptedTokens.push(Token(symbol, _token, token.decimals(), _chainlinkFeed, dataFeed.decimals()));
         emit TokenAdded(symbol, _token);
-    }
-
-    function removeAcceptedToken(bytes32 _symbol) external {
-        require(_symbol != NATIVE, "err-native-required");
-        for (uint256 i = 0; i < acceptedTokens.length; i++) {
-            if (acceptedTokens[i].symbol == _symbol) {
-                acceptedTokens[i] = acceptedTokens[acceptedTokens.length - 1];
-                acceptedTokens.pop();
-                emit TokenRemoved(_symbol);
-            }
-        }
     }
 }
