@@ -14,14 +14,12 @@ contract LiquidationPoolManager {
     address private immutable EUROs;
     address private immutable TST;
     address private immutable smartVaultManager;
-    address private immutable tokenManager;
     
-    constructor(address _TST, address _EUROs, address _smartVaultManager, address _tokenManager, address _eurUsd) {
+    constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd));
         TST = _TST;
         EUROs = _EUROs;
         smartVaultManager = _smartVaultManager;
-        tokenManager = _tokenManager;
     }
 
     receive() external payable {}
@@ -34,8 +32,9 @@ contract LiquidationPoolManager {
     }
 
     function runLiquidations() external {
-        ISmartVaultManager(smartVaultManager).liquidateVaults();
-        ITokenManager.Token[] memory tokens = ITokenManager(tokenManager).getAcceptedTokens();
+        ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
+        manager.liquidateVaults();
+        ITokenManager.Token[] memory tokens = ITokenManager(manager.tokenManager()).getAcceptedTokens();
         ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
         uint256 ethBalance;
         for (uint256 i = 0; i < tokens.length; i++) {

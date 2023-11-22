@@ -6,7 +6,7 @@ import "contracts/interfaces/ITokenManager.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract MockSmartVaultManager is ISmartVaultManager {
-    address private immutable tokenManager;
+    address public immutable tokenManager;
 
     constructor(address _tokenManager) {
         tokenManager = _tokenManager;
