@@ -9,6 +9,8 @@ import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 
+import "hardhat/console.sol";
+
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
 
@@ -17,12 +19,12 @@ contract LiquidationPool is ILiquidationPool {
     address private immutable eurUsd;
 
     Position[] private positions;
-    Reward[] private rewards;
+    mapping(bytes => uint256) private rewards;
     bytes32[] private rewardTokens;
     address payable public manager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
-    struct Reward { address holder; bytes32 symbol; uint256 amount; }
+    struct Reward { bytes32 symbol; uint256 amount; }
 
     constructor(address _TST, address _EUROs, address _eurUsd) {
         TST = _TST;
@@ -55,17 +57,10 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function findReward(address _holder, bytes32 _symbol) private view returns (Reward memory) {
-        for (uint256 i = 0; i < rewards.length; i++) {
-            Reward memory _reward = rewards[i];
-            if (_reward.holder == _holder && _reward.symbol == _symbol) return _reward;
-        }
-    }
-
     function findRewards(address _holder) private view returns (Reward[] memory) {
         Reward[] memory _rewards = new Reward[](rewardTokens.length);
         for (uint256 i = 0; i < rewardTokens.length; i++) {
-            _rewards[i] = findReward(_holder, rewardTokens[i]);
+            _rewards[i] = Reward(rewardTokens[i], rewards[abi.encodePacked(_holder, rewardTokens[i])]);
         }
         return _rewards;
     }
@@ -161,6 +156,10 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
+    function increaseOrCreateReward(address _holder, bytes32 _symbol, uint256 _amount) private {
+        rewards[abi.encodePacked(_holder, _symbol)] += _amount;
+    }
+
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable {
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         (,,uint256 stakeTotal) = stakeTotals();
@@ -183,7 +182,7 @@ contract LiquidationPool is ILiquidationPool {
                             costInEuros = _position.EUROs;
                         }
                         _position.EUROs -= costInEuros;
-                        rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
+                        increaseOrCreateReward(_position.holder, asset.token.symbol, _portion);
                         burnEuros += costInEuros;
                         if (asset.token.addr == address(0)) {
                             nativePurchased += _portion;

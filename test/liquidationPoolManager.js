@@ -305,5 +305,48 @@ describe('LiquidationPoolManager', async () => {
       expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(0);
       expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(usdcCollateral);
     });
+
+    it('increases existing rewards with multiple liquidations', async () => {
+      const ethCollateral = ethers.utils.parseEther('0.5');
+      const wbtcCollateral = BigNumber.from(1_000_000);
+      const usdcCollateral = BigNumber.from(500_000_000);
+      // create some funds to be "liquidated"
+      await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
+      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+
+      const tstStake = ethers.utils.parseEther('1000');
+      const eurosStake = ethers.utils.parseEther('2000');
+      await TST.mint(holder1.address, tstStake);
+      await EUROs.mint(holder1.address, eurosStake);
+      await TST.connect(holder1).approve(LiquidationPool.address, tstStake);
+      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
+      await LiquidationPool.connect(holder1).increasePosition(tstStake, eurosStake)
+
+      await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
+
+      expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
+      expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtcCollateral);
+
+      let { _rewards } = await LiquidationPool.position(holder1.address);
+      expect(_rewards.length).to.equal(2)
+      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethCollateral);
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
+
+      // create some more funds to be "liquidated"
+      await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
+      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
+
+      await EUROs.mint(holder1.address, eurosStake);
+      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
+      await LiquidationPool.connect(holder1).increasePosition(0, eurosStake)
+
+      await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
+
+      ({ _rewards, _position } = await LiquidationPool.position(holder1.address));
+      expect(_rewards.length).to.equal(3)
+      expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethCollateral.mul(2));
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
+      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(usdcCollateral);
+    });
   });
 });
