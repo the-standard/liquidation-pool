@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const { mockTokenManager, COLLATERAL_RATE } = require("./common");
 
 describe('LiquidationPool', async () => {
-  let user1, user2, user3, LiquidationPoolManager, LiquidationPool,
+  let user1, user2, user3, LiquidationPoolManager, LiquidationPool, TokenManager,
   MockERC20Factory, TST, EUROs;
 
   beforeEach(async () => {
@@ -152,10 +152,6 @@ describe('LiquidationPool', async () => {
       // = 50% of 100 = 50 EUROs
       ({_position} = await LiquidationPool.position(user3.address));
       expect(_position.EUROs).to.equal(ethers.utils.parseEther('50'));
-    });
-
-    xit('does not distribute fees or liquidity if there is no TST staked', async () => {
-      
     });
   });
 

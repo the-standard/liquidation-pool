@@ -175,6 +175,31 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.totalSupply()).to.equal(estimatedSupply);
     });
 
+    it('does not distribute fees or liquidity if there is no TST staked', async () => {
+      const fees = ethers.utils.parseEther('1000');
+      const ethCollateral = ethers.utils.parseEther('0.1');
+      const wbtcCollateral = BigNumber.from(1_000_000);
+
+      await holder1.sendTransaction({to: LiquidationPoolManager.address, value: ethCollateral});
+      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+
+      const eurosStake = ethers.utils.parseEther('1000');
+      await EUROs.mint(holder1.address, eurosStake);
+      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
+      await LiquidationPool.connect(holder1).increasePosition(0, eurosStake);
+
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      await LiquidationPoolManager.runLiquidation(TOKEN_ID);
+
+      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(fees);
+      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(ethCollateral);
+
+      const { _position } = await LiquidationPool.position(holder1.address);
+      expect(_position.TST).to.equal(0);
+      expect(_position.EUROs).to.equal(eurosStake);
+    });
+
     it('distributes fees before running liquidation', async () => {
       // create "liquidation" funds
       const ethCollateral = ethers.utils.parseEther('0.05');

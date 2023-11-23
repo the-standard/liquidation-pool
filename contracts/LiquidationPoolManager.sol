@@ -13,7 +13,7 @@ contract LiquidationPoolManager {
 
     address private immutable EUROs;
     address private immutable TST;
-    address public immutable smartVaultManager;
+    address private immutable smartVaultManager;
     
     constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd));
@@ -53,6 +53,6 @@ contract LiquidationPoolManager {
             }
         }
 
-        LiquidationPool(pool).distributeAssets{value: ethBalance}(assets);
+        LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, manager.collateralRate(), manager.HUNDRED_PC());
     }
 }

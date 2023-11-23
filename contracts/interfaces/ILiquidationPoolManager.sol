@@ -6,6 +6,5 @@ import "contracts/interfaces/ITokenManager.sol";
 interface ILiquidationPoolManager {
     struct Asset { ITokenManager.Token token; uint256 amount; }
 
-    function smartVaultManager() external view returns (address);
     function distributeFees() external;
 }

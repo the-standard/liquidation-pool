@@ -19,7 +19,7 @@ contract LiquidationPool is ILiquidationPool {
     Position[] private positions;
     Reward[] private rewards;
     bytes32[] private rewardTokens;
-    address public manager;
+    address payable public manager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { address holder; bytes32 symbol; uint256 amount; }
@@ -28,7 +28,7 @@ contract LiquidationPool is ILiquidationPool {
         TST = _TST;
         EUROs = _EUROs;
         eurUsd = _eurUsd;
-        manager = msg.sender;
+        manager = payable(msg.sender);
     }
 
     modifier onlyManager {
@@ -153,11 +153,19 @@ contract LiquidationPool is ILiquidationPool {
         rewardTokens.push(_symbol);
     }
 
-    function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets) external payable {
-        ISmartVaultManager smartVaultManager = ISmartVaultManager(ILiquidationPoolManager(manager).smartVaultManager());
+    function returnUnpurchasedNative(ILiquidationPoolManager.Asset[] memory _assets, uint256 _nativePurchased) private {
+        for (uint256 i = 0; i < _assets.length; i++) {
+            if (_assets[i].token.addr == address(0) && _assets[i].token.symbol != bytes32(0)) {
+                manager.call{value: _assets[i].amount - _nativePurchased}("");
+            }
+        }
+    }
+
+    function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable {
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         (,,uint256 stakeTotal) = stakeTotals();
         uint256 burnEuros;
+        uint256 nativePurchased;
         for (uint256 j = 0; j < positions.length; j++) {
             Position memory _position = positions[j];
             uint256 _positionStake = stake(_position);
@@ -168,19 +176,22 @@ contract LiquidationPool is ILiquidationPool {
                         addUniqueRewardToken(asset.token.symbol);
                         (,int256 assetPriceUsd,,,) = Chainlink.AggregatorV3Interface(asset.token.clAddr).latestRoundData();
                         uint256 _portion = asset.amount * _positionStake / stakeTotal;
-                        if (asset.token.addr != address(0)) {
-                            IERC20(asset.token.addr).safeTransferFrom(manager, address(this), _portion);
-                        }
                         rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
                         uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) / uint256(priceEurUsd)
-                            * smartVaultManager.HUNDRED_PC() / smartVaultManager.collateralRate();
+                            * _hundredPC / _collateralRate;
                         _position.EUROs -= costInEuros;
                         burnEuros += costInEuros;
+                        if (asset.token.addr == address(0)) {
+                            nativePurchased += _portion;
+                        } else {
+                            IERC20(asset.token.addr).safeTransferFrom(manager, address(this), _portion);
+                        }
                     }
                 }
                 savePosition(_position, j);
             }
         }
         IEUROs(EUROs).burn(address(this), burnEuros);
+        returnUnpurchasedNative(_assets, nativePurchased);
     }
 }

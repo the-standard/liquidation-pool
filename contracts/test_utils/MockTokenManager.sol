@@ -29,6 +29,5 @@ contract MockTokenManager is ITokenManager {
         for (uint256 i = 0; i < acceptedTokens.length; i++) if (acceptedTokens[i].symbol == symbol) revert TokenExists(symbol, _token);
         Chainlink.AggregatorV3Interface dataFeed = Chainlink.AggregatorV3Interface(_chainlinkFeed);
         acceptedTokens.push(Token(symbol, _token, token.decimals(), _chainlinkFeed, dataFeed.decimals()));
-        emit TokenAdded(symbol, _token);
     }
 }
