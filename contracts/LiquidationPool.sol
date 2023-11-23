@@ -172,14 +172,18 @@ contract LiquidationPool is ILiquidationPool {
             if (_positionStake > 0) {
                 for (uint256 i = 0; i < _assets.length; i++) {
                     ILiquidationPoolManager.Asset memory asset = _assets[i];
-                    if (asset.amount > 0) {
+                    if (asset.amount > 0 && _position.EUROs > 0) {
                         addUniqueRewardToken(asset.token.symbol);
                         (,int256 assetPriceUsd,,,) = Chainlink.AggregatorV3Interface(asset.token.clAddr).latestRoundData();
                         uint256 _portion = asset.amount * _positionStake / stakeTotal;
-                        rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
                         uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) / uint256(priceEurUsd)
                             * _hundredPC / _collateralRate;
+                        if (costInEuros > _position.EUROs) {
+                            _portion = _portion * _position.EUROs / costInEuros;
+                            costInEuros = _position.EUROs;
+                        }
                         _position.EUROs -= costInEuros;
+                        rewards.push(Reward(_position.holder, asset.token.symbol, _portion));
                         burnEuros += costInEuros;
                         if (asset.token.addr == address(0)) {
                             nativePurchased += _portion;

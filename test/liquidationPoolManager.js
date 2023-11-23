@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE } = require("./common");
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC } = require("./common");
 
 const TOKEN_ID = 1;
 
@@ -87,11 +87,19 @@ describe('LiquidationPoolManager', async () => {
     }
 
     const discounted = amount => {
-      return amount.mul(100).div(110);
+      return amount.mul(HUNDRED_PC).div(COLLATERAL_RATE);
     }
 
-    const scaleFrom = (amount, dec) => {
+    const reverseDiscounted = amount => {
+      return amount.mul(COLLATERAL_RATE).div(HUNDRED_PC);
+    }
+
+    const scaleUpFrom = (amount, dec) => {
       return amount.mul(BigNumber.from(10).pow(18 - dec));
+    }
+
+    const scaleDownTo = (amount, dec) => {
+      return amount.div(BigNumber.from(10).pow(18 - dec));
     }
 
     it('runs liquidations, and reverts if nothing to liquidate', async () => {
@@ -146,8 +154,8 @@ describe('LiquidationPoolManager', async () => {
       // with ~91% discount = ~€107.20
       // new staked EUROs value should be 2000 - ~203.69 - ~75.04 - ~107.20 = ~€1614.07
       const purchasePrice1 = discounted(ethCollateral.div(4).mul(PRICE_ETH_USD).div(PRICE_EUR_USD))
-        .add(discounted(scaleFrom(wbtcCollateral, 8).div(4).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD)))
-        .add(discounted(scaleFrom(usdcCollateral, 6).div(4).mul(PRICE_USDC_USD).div(PRICE_EUR_USD)));
+        .add(discounted(scaleUpFrom(wbtcCollateral, 8).div(4).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD)))
+        .add(discounted(scaleUpFrom(usdcCollateral, 6).div(4).mul(PRICE_USDC_USD).div(PRICE_EUR_USD)));
       expect(_position.TST).to.equal(tstStake1);
       expect(_position.EUROs).to.equal(eurosStake1.sub(purchasePrice1));
 
@@ -166,8 +174,8 @@ describe('LiquidationPoolManager', async () => {
       // with ~91% discount = ~€321.61
       // new staked EUROs value should be 3000 - ~611.06 - ~225.13 - ~321.61 = ~€1842.2
       const purchasePrice2 = discounted(ethCollateral.mul(3).div(4).mul(PRICE_ETH_USD).div(PRICE_EUR_USD))
-        .add(discounted(scaleFrom(wbtcCollateral, 8).mul(3).div(4).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD)))
-        .add(discounted(scaleFrom(usdcCollateral, 6).mul(3).div(4).mul(PRICE_USDC_USD).div(PRICE_EUR_USD)));
+        .add(discounted(scaleUpFrom(wbtcCollateral, 8).mul(3).div(4).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD)))
+        .add(discounted(scaleUpFrom(usdcCollateral, 6).mul(3).div(4).mul(PRICE_USDC_USD).div(PRICE_EUR_USD)));
       expect(_position.TST).to.equal(tstStake2);
       expect(_position.EUROs).to.equal(eurosStake2.sub(purchasePrice2));
 
@@ -225,8 +233,77 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(fees.sub(expectedEUROsSpent));
     });
 
-    xit('returns unpurchased liquidated assets to protocol address?', async () => {
+    it('returns unpurchased liquidated assets to protocol address', async () => {
+      // create "liquidation" funds
+      const ethCollateral = ethers.utils.parseEther('0.1');
+      const wbtcCollateral = BigNumber.from(2_000_000);
+      const usdcCollateral = BigNumber.from(500_000_000);
+      await holder1.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
+      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
 
+      const tstStake1 = ethers.utils.parseEther('100');
+      const eurosStake1 = ethers.utils.parseEther('100');
+      await TST.mint(holder1.address, tstStake1);
+      await EUROs.mint(holder1.address, eurosStake1);
+      await TST.connect(holder1).approve(LiquidationPool.address, tstStake1);
+      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake1);
+      await LiquidationPool.connect(holder1).increasePosition(tstStake1, eurosStake1);
+
+      const tstStake2 = ethers.utils.parseEther('2000');
+      const eurosStake2 = ethers.utils.parseEther('300');
+      await TST.mint(holder2.address, tstStake2);
+      await EUROs.mint(holder2.address, eurosStake2);
+      await TST.connect(holder2).approve(LiquidationPool.address, tstStake2);
+      await EUROs.connect(holder2).approve(LiquidationPool.address, eurosStake2);
+      await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2);
+
+      await LiquidationPoolManager.runLiquidation(TOKEN_ID);
+
+      let { _position, _rewards } = await LiquidationPool.position(holder1.address);
+      expect(_position.EUROs).to.equal(0);
+      
+      // 0.025 ETH = 0.025 * $1900 = $47.5 = ~€44.81
+      // discounted, user spent ~€40.74
+      // ~€59.26 to spend on WBTC, which can buy ~€65.19 worth, discounted
+      // ~€65.19 = $69.1 = 0.00197 WBTC;
+      //
+      // then there is 0 EUROs left to buy USDC
+      const spentOnEth1 = discounted(ethCollateral.div(4)
+        .mul(PRICE_ETH_USD).div(PRICE_EUR_USD));
+      const expectedWBTCPurchased1 = scaleDownTo(reverseDiscounted(eurosStake1.sub(spentOnEth1)), 8)
+        .mul(PRICE_EUR_USD).div(PRICE_WBTC_USD);
+      expect(_rewards).to.have.length(2);
+      expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(ethCollateral.div(4));
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(expectedWBTCPurchased1);
+
+      ({ _position, _rewards } = await LiquidationPool.position(holder2.address));
+      expect(_position.EUROs).to.equal(0);
+      
+      // 0.075 ETH = 0.075 * $1900 = $142.5 = ~€134.43
+      // discounted, user spent ~€122.21
+      // ~€177.79 to spend on WBTC, which can buy ~€195.57 worth, discounted
+      // ~€195.57 = $207.3 = 0.00592 WBTC;
+      //
+      // then there is 0 EUROs left to buy USDC
+      const spentOnEth2 = discounted(ethCollateral.mul(3).div(4)
+        .mul(PRICE_ETH_USD).div(PRICE_EUR_USD));
+      const expectedWBTCPurchased2 = scaleDownTo(reverseDiscounted(eurosStake2.sub(spentOnEth2)), 8)
+        .mul(PRICE_EUR_USD).div(PRICE_WBTC_USD);
+      expect(_rewards).to.have.length(2);
+      expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(ethCollateral.mul(3).div(4));
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(expectedWBTCPurchased2);
+
+      // all ETH should have moved to pool
+      expect(await await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
+      expect(await await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
+      // some WBTC should have moved to pool
+      const expectedWBTCInPool = expectedWBTCPurchased1.add(expectedWBTCPurchased2);
+      expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(expectedWBTCInPool);
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(wbtcCollateral.sub(expectedWBTCInPool));
+      // all USDC should have remained in manager
+      expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(0);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(usdcCollateral);
     });
   });
 });
