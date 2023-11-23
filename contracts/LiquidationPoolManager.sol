@@ -24,7 +24,7 @@ contract LiquidationPoolManager {
 
     receive() external payable {}
 
-    function distributeFees() external {
+    function distributeFees() public {
         IERC20 eurosToken = IERC20(EUROs);
         uint256 balance = eurosToken.balanceOf(address(this));
         eurosToken.approve(pool, balance);
@@ -34,6 +34,7 @@ contract LiquidationPoolManager {
     function runLiquidation(uint256 _tokenId) external {
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
         manager.liquidateVault(_tokenId);
+        distributeFees();
         ITokenManager.Token[] memory tokens = ITokenManager(manager.tokenManager()).getAcceptedTokens();
         ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
         uint256 ethBalance;

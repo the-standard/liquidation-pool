@@ -154,8 +154,8 @@ describe('LiquidationPool', async () => {
       expect(_position.EUROs).to.equal(ethers.utils.parseEther('50'));
     });
 
-    xit('does not distribute fees if there is no TST staked', async () => {
-
+    xit('does not distribute fees or liquidity if there is no TST staked', async () => {
+      
     });
   });
 
@@ -246,7 +246,9 @@ describe('LiquidationPool', async () => {
       await expect(LiquidationPool.decreasePosition(tstStake2, 0)).to.be.revertedWith('invalid-decr-amount');
 
       const fees = ethers.utils.parseEther('500');
-      await expect(LiquidationPool.decreasePosition(0, ethers.utils.parseEther('500'))).to.be.revertedWith('invalid-decr-amount');
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+      // user one cannot take full amount fees (only 33%)
+      await expect(LiquidationPool.decreasePosition(0, fees)).to.be.revertedWith('invalid-decr-amount');
     });
   });
 });

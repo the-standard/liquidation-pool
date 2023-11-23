@@ -8,7 +8,6 @@ import "contracts/interfaces/IEUROs.sol";
 import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
-import "contracts/interfaces/ITokenManager.sol";
 
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;

@@ -86,13 +86,17 @@ describe('LiquidationPoolManager', async () => {
       return rewards.filter(reward => reward.symbol === ethers.utils.formatBytes32String(symbol))[0].amount;
     }
 
+    const discounted = amount => {
+      return amount.mul(100).div(110);
+    }
+
+    const scaleFrom = (amount, dec) => {
+      return amount.mul(BigNumber.from(10).pow(18 - dec));
+    }
+
     it('runs liquidations, and reverts if nothing to liquidate', async () => {
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).to.be.revertedWith('vault-not-undercollateralised');
     });
-
-    const estimateFormatted = amount => {
-      return Math.round(Number(ethers.utils.formatEther(amount)))
-    }
 
     it('distributes liquidated assets among stake holders if there is enough EUROs to purchase', async () => {
       const ethCollateral = ethers.utils.parseEther('0.5');
@@ -141,12 +145,6 @@ describe('LiquidationPoolManager', async () => {
       // 125 USDC = ~€117.92
       // with ~91% discount = ~€107.20
       // new staked EUROs value should be 2000 - ~203.69 - ~75.04 - ~107.20 = ~€1614.07
-      const discounted = amount => {
-        return amount.mul(100).div(110);
-      }
-      const scaleFrom = (amount, dec) => {
-        return amount.mul(BigNumber.from(10).pow(18 - dec));
-      }
       const purchasePrice1 = discounted(ethCollateral.div(4).mul(PRICE_ETH_USD).div(PRICE_EUR_USD))
         .add(discounted(scaleFrom(wbtcCollateral, 8).div(4).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD)))
         .add(discounted(scaleFrom(usdcCollateral, 6).div(4).mul(PRICE_USDC_USD).div(PRICE_EUR_USD)));
@@ -177,8 +175,29 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.totalSupply()).to.equal(estimatedSupply);
     });
 
-    xit('distributes fees before running liquidation', async () => {
+    it('distributes fees before running liquidation', async () => {
+      // create "liquidation" funds
+      const ethCollateral = ethers.utils.parseEther('0.05');
+      await holder1.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
 
+      const tstStake1 = ethers.utils.parseEther('1000');
+      await TST.mint(holder1.address, tstStake1);
+      await TST.connect(holder1).approve(LiquidationPool.address, tstStake1);
+      await LiquidationPool.connect(holder1).increasePosition(tstStake1, 0)
+
+      const fees = ethers.utils.parseEther('1000');
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      await LiquidationPoolManager.runLiquidation(TOKEN_ID);
+
+      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
+      // 0.05 ETH = 0.05 * $1900 = $95 = ~€89.62
+      // with discount user pays ~€81.48
+      const expectedEUROsSpent = discounted(ethCollateral.mul(PRICE_ETH_USD).div(PRICE_EUR_USD))
+      const { _position } = await LiquidationPool.position(holder1.address);
+      expect(_position.EUROs).to.equal(fees.sub(expectedEUROsSpent));
+      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(fees.sub(expectedEUROsSpent));
     });
 
     xit('returns unpurchased liquidated assets to protocol address?', async () => {

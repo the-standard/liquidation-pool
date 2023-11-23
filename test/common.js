@@ -1,4 +1,5 @@
 const COLLATERAL_RATE = 110000;
+const HUNDRED_PC = 100000;
 const PRICE_EUR_USD = 106000000;
 const PRICE_ETH_USD = 190000000000;
 const PRICE_WBTC_USD = 3500000000000;
@@ -21,6 +22,7 @@ const mockTokenManager = async _ => {
 
 module.exports = {
   COLLATERAL_RATE,
+  HUNDRED_PC,
   PRICE_EUR_USD,
   PRICE_ETH_USD,
   PRICE_WBTC_USD,
