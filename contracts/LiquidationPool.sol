@@ -8,6 +8,7 @@ import "contracts/interfaces/IEUROs.sol";
 import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
+import "contracts/interfaces/ITokenManager.sol";
 
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
@@ -19,16 +20,17 @@ contract LiquidationPool is ILiquidationPool {
     address[] private holders;
     mapping(address => Position) private positions;
     mapping(bytes => uint256) private rewards;
-    bytes32[] private rewardTokens;
     address payable public manager;
+    address  public tokenManager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { bytes32 symbol; uint256 amount; }
 
-    constructor(address _TST, address _EUROs, address _eurUsd) {
+    constructor(address _TST, address _EUROs, address _eurUsd, address _tokenManager) {
         TST = _TST;
         EUROs = _EUROs;
         eurUsd = _eurUsd;
+        tokenManager = _tokenManager;
         manager = payable(msg.sender);
     }
 
@@ -55,9 +57,10 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function findRewards(address _holder) private view returns (Reward[] memory) {
-        Reward[] memory _rewards = new Reward[](rewardTokens.length);
-        for (uint256 i = 0; i < rewardTokens.length; i++) {
-            _rewards[i] = Reward(rewardTokens[i], rewards[abi.encodePacked(_holder, rewardTokens[i])]);
+        ITokenManager.Token[] memory _tokens = ITokenManager(tokenManager).getAcceptedTokens();
+        Reward[] memory _rewards = new Reward[](_tokens.length);
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            _rewards[i] = Reward(_tokens[i].symbol, rewards[abi.encodePacked(_holder, _tokens[i].symbol)]);
         }
         return _rewards;
     }
@@ -145,13 +148,6 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function addUniqueRewardToken(bytes32 _symbol) private {
-        for (uint256 i = 0; i < rewardTokens.length; i++) {
-            if (rewardTokens[i] == _symbol) return;
-        }
-        rewardTokens.push(_symbol);
-    }
-
     function returnUnpurchasedNative(ILiquidationPoolManager.Asset[] memory _assets, uint256 _nativePurchased) private {
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i].token.addr == address(0) && _assets[i].token.symbol != bytes32(0)) {
@@ -176,7 +172,6 @@ contract LiquidationPool is ILiquidationPool {
                 for (uint256 i = 0; i < _assets.length; i++) {
                     ILiquidationPoolManager.Asset memory asset = _assets[i];
                     if (asset.amount > 0 && _position.EUROs > 0) {
-                        addUniqueRewardToken(asset.token.symbol);
                         (,int256 assetPriceUsd,,,) = Chainlink.AggregatorV3Interface(asset.token.clAddr).latestRoundData();
                         uint256 _portion = asset.amount * _positionStake / stakeTotal;
                         uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) / uint256(priceEurUsd)
