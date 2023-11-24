@@ -9,8 +9,6 @@ import "contracts/interfaces/ILiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 
-import "hardhat/console.sol";
-
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
 
@@ -18,7 +16,8 @@ contract LiquidationPool is ILiquidationPool {
     address private immutable EUROs;
     address private immutable eurUsd;
 
-    Position[] private positions;
+    address[] private holders;
+    mapping(address => Position) private positions;
     mapping(bytes => uint256) private rewards;
     bytes32[] private rewardTokens;
     address payable public manager;
@@ -43,18 +42,16 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function stakeTotals() private view returns (uint256 _tst, uint256 _euros, uint256 _stakes) {
-        for (uint256 i = 0; i < positions.length; i++) {
-            Position memory _position = positions[i];
+        for (uint256 i = 0; i < holders.length; i++) {
+            Position memory _position = positions[holders[i]];
             _tst += _position.TST;
             _euros += _position.EUROs;
             _stakes += stake(_position);
         }
     }
 
-    function findPosition(address _holder) private view returns (Position memory, uint256) {
-        for (uint256 i = 0; i < positions.length; i++) {
-            if (positions[i].holder == _holder) return (positions[i], i);
-        }
+    function findPosition(address _holder) private view returns (Position memory) {
+        return positions[_holder];
     }
 
     function findRewards(address _holder) private view returns (Reward[] memory) {
@@ -66,8 +63,9 @@ contract LiquidationPool is ILiquidationPool {
     }
     
     function position(address _holder) external view returns(Position memory _position, Reward[] memory _rewards) {
-        (_position,) = findPosition(_holder);
+        _position = positions[_holder];
         (uint256 tstTotal,,) = stakeTotals();
+
         if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / tstTotal;
         _rewards = findRewards(_holder);
     }
@@ -76,26 +74,32 @@ contract LiquidationPool is ILiquidationPool {
         return _position.TST == 0 && _position.EUROs == 0;
     }
 
-    function deletePosition(uint256 _index) private {
-        positions[_index] = positions[positions.length - 1];
-        positions.pop();
+    function deleteHolder(address _holder) private {
+        for (uint256 i = 0; i < holders.length; i++) {
+            if (holders[i] == _holder) {
+                holders[i] = holders[holders.length - 1];
+                holders.pop();
+            }
+        }
     }
 
-    function savePosition(Position memory _position, uint256 _index) private {
+    function savePosition(Position memory _position) private {
         if (empty(_position)) {
-            deletePosition(_index);
+            deleteHolder(_position.holder);
+            delete positions[_position.holder];
         } else if (_position.holder == address(0)) {
+            holders.push(msg.sender);
             _position.holder = msg.sender;
-            positions.push(_position);
+            positions[msg.sender] = _position;
         } else {
-            positions[_index] = _position;
+            positions[_position.holder] = _position;
         }
     }
 
     function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
 
-        (Position memory _position, uint256 _index) = findPosition(msg.sender);
+        Position memory _position = findPosition(msg.sender);
 
         if (_tstVal > 0) {
             IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
@@ -107,13 +111,13 @@ contract LiquidationPool is ILiquidationPool {
             _position.EUROs += _eurosVal;
         }
 
-        savePosition(_position, _index);
+        savePosition(_position);
     }
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         ILiquidationPoolManager(manager).distributeFees();
 
-        (Position memory _position, uint256 _index) = findPosition(msg.sender);
+        Position memory _position = findPosition(msg.sender);
         require(_tstVal <= _position.TST && _eurosVal <= _position.EUROs, "invalid-decr-amount");
 
         if (_tstVal > 0 && _tstVal <= _position.TST) {
@@ -126,17 +130,17 @@ contract LiquidationPool is ILiquidationPool {
             _position.EUROs -= _eurosVal;
         }
 
-        savePosition(_position, _index);
+        savePosition(_position);
     }
 
     function distributeFees(uint256 _amount) external onlyManager {
         (uint256 tstTotal,,) = stakeTotals();
         if (tstTotal > 0) {
             IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
-            for (uint256 i = 0; i < positions.length; i++) {
-                Position memory _position = positions[i];
+            for (uint256 i = 0; i < holders.length; i++) {
+                Position memory _position = positions[holders[i]];
                 _position.EUROs += _amount * _position.TST / tstTotal;
-                savePosition(_position, i);
+                savePosition(_position);
             }
         }
     }
@@ -165,8 +169,8 @@ contract LiquidationPool is ILiquidationPool {
         (,,uint256 stakeTotal) = stakeTotals();
         uint256 burnEuros;
         uint256 nativePurchased;
-        for (uint256 j = 0; j < positions.length; j++) {
-            Position memory _position = positions[j];
+        for (uint256 j = 0; j < holders.length; j++) {
+            Position memory _position = positions[holders[j]];
             uint256 _positionStake = stake(_position);
             if (_positionStake > 0) {
                 for (uint256 i = 0; i < _assets.length; i++) {
@@ -191,7 +195,7 @@ contract LiquidationPool is ILiquidationPool {
                         }
                     }
                 }
-                savePosition(_position, j);
+                savePosition(_position);
             }
         }
         IEUROs(EUROs).burn(address(this), burnEuros);
