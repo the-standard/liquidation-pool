@@ -268,7 +268,7 @@ describe('LiquidationPoolManager', async () => {
         .mul(PRICE_ETH_USD).div(PRICE_EUR_USD));
       const expectedWBTCPurchased1 = scaleDownTo(reverseDiscounted(eurosStake1.sub(spentOnEth1)), 8)
         .mul(PRICE_EUR_USD).div(PRICE_WBTC_USD);
-      expect(_rewards).to.have.length(2);
+      expect(_rewards).to.have.length(3);
       expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(ethCollateral.div(4));
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(expectedWBTCPurchased1);
 
@@ -285,7 +285,7 @@ describe('LiquidationPoolManager', async () => {
         .mul(PRICE_ETH_USD).div(PRICE_EUR_USD));
       const expectedWBTCPurchased2 = scaleDownTo(reverseDiscounted(eurosStake2.sub(spentOnEth2)), 8)
         .mul(PRICE_EUR_USD).div(PRICE_WBTC_USD);
-      expect(_rewards).to.have.length(2);
+      expect(_rewards).to.have.length(3);
       expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(ethCollateral.mul(3).div(4));
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(expectedWBTCPurchased2);
 
@@ -323,7 +323,7 @@ describe('LiquidationPoolManager', async () => {
       expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtcCollateral);
 
       let { _rewards } = await LiquidationPool.position(holder1.address);
-      expect(_rewards.length).to.equal(2)
+      expect(_rewards).to.have.length(3)
       expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethCollateral);
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
 
@@ -338,7 +338,7 @@ describe('LiquidationPoolManager', async () => {
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
 
       ({ _rewards, _position } = await LiquidationPool.position(holder1.address));
-      expect(_rewards.length).to.equal(3)
+      expect(_rewards).to.have.length(3)
       expect(rewardAmountForAsset(_rewards, 'ETH')).equal(ethCollateral.mul(2));
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
       expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(usdcCollateral);

@@ -9,7 +9,8 @@ describe('LiquidationPool', async () => {
 
   beforeEach(async () => {
     [ user1, user2, user3 ] = await ethers.getSigners();
-    TST = await (await ethers.getContractFactory('MockERC20')).deploy('The Standard Token', 'TST', 18);
+    MockERC20Factory = await ethers.getContractFactory('MockERC20');
+    TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(106000000, 'EUR / USD')
     const { TokenManager } = await mockTokenManager();
