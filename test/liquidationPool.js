@@ -1,21 +1,21 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { mockTokenManager, COLLATERAL_RATE } = require("./common");
+const { BigNumber } = ethers;
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset } = require("./common");
 
 describe('LiquidationPool', async () => {
-  let user1, user2, user3, LiquidationPoolManager, LiquidationPool, TokenManager,
+  let user1, user2, user3, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
   MockERC20Factory, TST, EUROs;
 
   beforeEach(async () => {
     [ user1, user2, user3 ] = await ethers.getSigners();
-    MockERC20Factory = await ethers.getContractFactory('MockERC20');
-    TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
-    EUROs = await MockERC20Factory.deploy('The Standard EURO', 'EUROs', 18);
+    TST = await (await ethers.getContractFactory('MockERC20')).deploy('The Standard Token', 'TST', 18);
+    EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(106000000, 'EUR / USD')
     const { TokenManager } = await mockTokenManager();
-    const SmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
-      LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, SmartVaultManager.address, EurUsd.address
+    MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
+    LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -245,6 +245,48 @@ describe('LiquidationPool', async () => {
       await EUROs.mint(LiquidationPoolManager.address, fees);
       // user one cannot take full amount fees (only 33%)
       await expect(LiquidationPool.decreasePosition(0, fees)).to.be.revertedWith('invalid-decr-amount');
+    });
+  });
+
+  describe('claim rewards', async () => {
+    it('allows users to claim their accrued rewards', async () => {
+      const ethCollateral = ethers.utils.parseEther('0.5');
+      const wbtcCollateral = BigNumber.from(1_000_000);
+      const usdcCollateral = BigNumber.from(500_000_000);
+      // create some funds to be "liquidated"
+      await user2.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
+      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
+
+      let stakeValue = ethers.utils.parseEther('10000');
+      await TST.mint(user1.address, stakeValue);
+      await EUROs.mint(user1.address, stakeValue);
+      await TST.connect(user1).approve(LiquidationPool.address, stakeValue);
+      await EUROs.connect(user1).approve(LiquidationPool.address, stakeValue);
+      await LiquidationPool.connect(user1).increasePosition(stakeValue, stakeValue);
+
+      await LiquidationPoolManager.runLiquidation(TOKEN_ID);
+      expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
+      expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtcCollateral)
+      expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(usdcCollateral)
+
+      let { _rewards } = await LiquidationPool.position(user1.address);
+      expect(_rewards).to.have.length(3);
+      expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(ethCollateral);
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
+      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(usdcCollateral);
+
+      await LiquidationPool.claimRewards();
+
+      ({ _rewards } = await LiquidationPool.position(user1.address));
+      expect(_rewards).to.have.length(3);
+      expect(rewardAmountForAsset(_rewards, 'ETH')).to.equal(0);
+      expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(0);
+      expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(0);
+    });
+
+    xit('claims rewards automatically if position is going to be deleted', async () => {
+
     });
   });
 });

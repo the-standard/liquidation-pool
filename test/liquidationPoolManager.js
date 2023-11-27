@@ -1,9 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC } = require("./common");
-
-const TOKEN_ID = 1;
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TokenManager,
@@ -82,9 +80,6 @@ describe('LiquidationPoolManager', async () => {
   });
 
   describe('runLiquidation', async () => {
-    const rewardAmountForAsset = (rewards,symbol) => {
-      return rewards.filter(reward => reward.symbol === ethers.utils.formatBytes32String(symbol))[0].amount;
-    }
 
     const discounted = amount => {
       return amount.mul(HUNDRED_PC).div(COLLATERAL_RATE);

@@ -136,6 +136,23 @@ contract LiquidationPool is ILiquidationPool {
         savePosition(_position);
     }
 
+    function claimRewards() external {
+        ITokenManager.Token[] memory _tokens = ITokenManager(tokenManager).getAcceptedTokens();
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            ITokenManager.Token memory _token = _tokens[i];
+            uint256 _rewardAmount = rewards[abi.encodePacked(msg.sender, _token.symbol)];
+            if (_rewardAmount > 0) {
+                if (_token.addr == address(0)) {
+                    payable(msg.sender).call{value: _rewardAmount}("");
+                } else {
+                    IERC20(_token.addr).transfer(msg.sender, _rewardAmount);
+                }   
+                delete rewards[abi.encodePacked(msg.sender, _token.symbol)];
+            }
+
+        }
+    }
+
     function distributeFees(uint256 _amount) external onlyManager {
         (uint256 tstTotal,,) = stakeTotals();
         if (tstTotal > 0) {

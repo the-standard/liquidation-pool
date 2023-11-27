@@ -31,6 +31,7 @@ contract LiquidationPoolManager {
         LiquidationPool(pool).distributeFees(balance);
     }
 
+    // TODO protect this function
     function runLiquidation(uint256 _tokenId) external {
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
         manager.liquidateVault(_tokenId);

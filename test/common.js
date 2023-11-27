@@ -4,6 +4,7 @@ const PRICE_EUR_USD = 106000000;
 const PRICE_ETH_USD = 190000000000;
 const PRICE_WBTC_USD = 3500000000000;
 const PRICE_USDC_USD = 100000000;
+const TOKEN_ID = 1;
 
 const mockTokenManager = async _ => {
   const MockERC20Factory = await ethers.getContractFactory('MockERC20');
@@ -20,6 +21,10 @@ const mockTokenManager = async _ => {
   return { TokenManager, WBTC, USDC };
 };
 
+const rewardAmountForAsset = (rewards, symbol) => {
+  return rewards.filter(reward => reward.symbol === ethers.utils.formatBytes32String(symbol))[0].amount;
+}
+
 module.exports = {
   COLLATERAL_RATE,
   HUNDRED_PC,
@@ -27,5 +32,7 @@ module.exports = {
   PRICE_ETH_USD,
   PRICE_WBTC_USD,
   PRICE_USDC_USD,
-  mockTokenManager
+  TOKEN_ID,
+  mockTokenManager,
+  rewardAmountForAsset
 };
