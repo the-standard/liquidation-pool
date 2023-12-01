@@ -27,8 +27,10 @@ contract LiquidationPoolManager {
     function distributeFees() public {
         IERC20 eurosToken = IERC20(EUROs);
         uint256 balance = eurosToken.balanceOf(address(this));
-        eurosToken.approve(pool, balance);
-        LiquidationPool(pool).distributeFees(balance);
+        if (balance > 0) {
+            eurosToken.approve(pool, balance);
+            LiquidationPool(pool).distributeFees(balance);
+        }
     }
 
     // TODO protect this function
@@ -56,4 +58,6 @@ contract LiquidationPoolManager {
 
         LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, manager.collateralRate(), manager.HUNDRED_PC());
     }
+
+    // TODO function for us to take out leftovers
 }
