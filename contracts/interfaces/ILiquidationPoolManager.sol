@@ -7,4 +7,5 @@ interface ILiquidationPoolManager {
     struct Asset { ITokenManager.Token token; uint256 amount; }
 
     function distributeFees() external;
+    function runLiquidation(uint256 _tokenId) external;
 }

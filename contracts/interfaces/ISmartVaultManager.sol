@@ -6,4 +6,5 @@ interface ISmartVaultManager {
     function collateralRate() external view returns (uint256);
     function tokenManager() external view returns (address);
     function liquidateVault(uint256 _tokenId) external;
+    function totalSupply() external view returns (uint256);
 }
