@@ -21,10 +21,10 @@ contract LiquidationPool is ILiquidationPool {
     mapping(address => Position) private positions;
     mapping(bytes => uint256) private rewards;
     address payable public manager;
-    address  public tokenManager;
+    address public tokenManager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
-    struct Reward { bytes32 symbol; uint256 amount; }
+    struct Reward { bytes32 symbol; uint256 amount; uint8 dec; }
 
     constructor(address _TST, address _EUROs, address _eurUsd, address _tokenManager) {
         TST = _TST;
@@ -60,7 +60,7 @@ contract LiquidationPool is ILiquidationPool {
         ITokenManager.Token[] memory _tokens = ITokenManager(tokenManager).getAcceptedTokens();
         Reward[] memory _rewards = new Reward[](_tokens.length);
         for (uint256 i = 0; i < _tokens.length; i++) {
-            _rewards[i] = Reward(_tokens[i].symbol, rewards[abi.encodePacked(_holder, _tokens[i].symbol)]);
+            _rewards[i] = Reward(_tokens[i].symbol, rewards[abi.encodePacked(_holder, _tokens[i].symbol)], _tokens[i].dec);
         }
         return _rewards;
     }
@@ -142,12 +142,13 @@ contract LiquidationPool is ILiquidationPool {
             ITokenManager.Token memory _token = _tokens[i];
             uint256 _rewardAmount = rewards[abi.encodePacked(msg.sender, _token.symbol)];
             if (_rewardAmount > 0) {
+                delete rewards[abi.encodePacked(msg.sender, _token.symbol)];
                 if (_token.addr == address(0)) {
+                    // TODO do something with return value
                     payable(msg.sender).call{value: _rewardAmount}("");
                 } else {
                     IERC20(_token.addr).transfer(msg.sender, _rewardAmount);
                 }   
-                delete rewards[abi.encodePacked(msg.sender, _token.symbol)];
             }
 
         }
@@ -168,6 +169,7 @@ contract LiquidationPool is ILiquidationPool {
     function returnUnpurchasedNative(ILiquidationPoolManager.Asset[] memory _assets, uint256 _nativePurchased) private {
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i].token.addr == address(0) && _assets[i].token.symbol != bytes32(0)) {
+                // TODO do something with return value
                 manager.call{value: _assets[i].amount - _nativePurchased}("");
             }
         }
