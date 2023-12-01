@@ -290,4 +290,11 @@ describe('LiquidationPool', async () => {
 
     });
   });
+
+  // do we need upgrades? should we just make it pausable?
+  describe('upgrade', async () => {
+    xit('maintains state of positions / rewards / pool balance with upgrades', async () => {
+
+    });
+  });
 });
