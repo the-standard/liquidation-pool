@@ -23,6 +23,7 @@ contract MockSmartVaultManager is ISmartVaultManager {
         for (uint256 i = 0; i < tokens.length; i++) {
             ITokenManager.Token memory token = tokens[i];
             if (token.addr == address(0) && address(this).balance > 0) {
+                // TODO do something with return value
                 payable(msg.sender).call{value: address(this).balance}("");
                 liquidated = true;
             } else if (token.addr != address(0)) {
@@ -35,4 +36,6 @@ contract MockSmartVaultManager is ISmartVaultManager {
         }
         require(liquidated, "vault-not-undercollateralised");
     }
+
+    function totalSupply() external view returns (uint256) {}
 }
