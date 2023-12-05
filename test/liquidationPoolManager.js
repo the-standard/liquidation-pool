@@ -4,7 +4,7 @@ const { BigNumber } = ethers;
 const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
-  let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TokenManager,
+  let LiquidationPoolManager, LiquidationPoolManagerContract, LiquidationPool, MockSmartVaultManager, TokenManager,
   TST, EUROs, WBTC, USDC, holder1, holder2, holder3, holder4, holder5, Protocol, MockERC20Factory;
 
   beforeEach(async () => {
@@ -15,7 +15,8 @@ describe('LiquidationPoolManager', async () => {
     ({ TokenManager, WBTC, USDC } = await mockTokenManager());
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(PRICE_EUR_USD, 'EUR/USD'); // $1.06
-    LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
+    LiquidationPoolManagerContract = await ethers.getContractFactory('LiquidationPoolManager');
+    LiquidationPoolManager = await LiquidationPoolManagerContract.deploy(
       TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
@@ -88,7 +89,9 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.balanceOf(Protocol.address)).to.equal(feeBalance.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC));
 
       const newPoolFeePercentage = 30000;
-      await expect(LiquidationPoolManager.setPoolFeePercentage(newPoolFeePercentage)).to.be.reverted;
+      await expect(LiquidationPoolManager.connect(holder2).setPoolFeePercentage(newPoolFeePercentage)).to.be.revertedWithCustomError(
+        LiquidationPoolManagerContract, 'OwnableUnauthorizedAccount'
+      );
       await LiquidationPoolManager.setPoolFeePercentage(newPoolFeePercentage);
 
       await EUROs.mint(LiquidationPoolManager.address, feeBalance);
