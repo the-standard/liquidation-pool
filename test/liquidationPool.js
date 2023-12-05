@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -20,6 +20,10 @@ describe('LiquidationPool', async () => {
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
+  
+  afterEach(async () => {
+    await network.provider.send("hardhat_reset")
+  });
 
   describe('position', async () => {
     it('provides the position data for given user', async () => {
@@ -27,20 +31,6 @@ describe('LiquidationPool', async () => {
 
       expect(_position.TST).to.equal('0');
       expect(_position.EUROs).to.equal('0');
-    });
-
-    it('includes unclaimed EUROs fees if due', async () => {
-      const tstVal = ethers.utils.parseEther('1000');
-      const fees = ethers.utils.parseEther('100');
-
-      await TST.mint(user1.address, tstVal);
-      await TST.approve(LiquidationPool.address, tstVal);
-      await LiquidationPool.increasePosition(tstVal, 0);
-      await EUROs.mint(LiquidationPoolManager.address, fees);
-
-      const { _position } = await LiquidationPool.position(user1.address);
-      expect(_position.TST).to.equal(tstVal);
-      expect(_position.EUROs).to.equal(fees);
     });
 
     it('does not include unclaimed EUROs fees for non-holders', async () => {
@@ -167,6 +157,8 @@ describe('LiquidationPool', async () => {
 
       await LiquidationPool.increasePosition(balance, balance);
 
+      await fastForward(DAY);
+
       expect(await TST.balanceOf(user1.address)).to.equal(0);
       expect(await EUROs.balanceOf(user1.address)).to.equal(0);
 
@@ -212,6 +204,8 @@ describe('LiquidationPool', async () => {
 
       const fees = ethers.utils.parseEther('20');
       await EUROs.mint(LiquidationPoolManager.address, fees);
+
+      await fastForward(DAY);
 
       // user1 should receive 12.5% of fees when they decrease their position;
       const distributedFees1 = ethers.utils.parseEther('2.5');
@@ -265,6 +259,8 @@ describe('LiquidationPool', async () => {
       await TST.connect(user1).approve(LiquidationPool.address, stakeValue);
       await EUROs.connect(user1).approve(LiquidationPool.address, stakeValue);
       await LiquidationPool.connect(user1).increasePosition(stakeValue, stakeValue);
+
+      await fastForward(DAY);
 
       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
       expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);

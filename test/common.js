@@ -5,6 +5,7 @@ const PRICE_ETH_USD = 190000000000;
 const PRICE_WBTC_USD = 3500000000000;
 const PRICE_USDC_USD = 100000000;
 const TOKEN_ID = 1;
+const DAY = 60 * 60 * 24;
 
 const mockTokenManager = async _ => {
   const MockERC20Factory = await ethers.getContractFactory('MockERC20');
@@ -25,6 +26,11 @@ const rewardAmountForAsset = (rewards, symbol) => {
   return rewards.filter(reward => reward.symbol === ethers.utils.formatBytes32String(symbol))[0].amount;
 }
 
+const fastForward = async time => {
+  await ethers.provider.send("evm_increaseTime", [time]);
+  await ethers.provider.send("evm_mine");
+}
+
 module.exports = {
   COLLATERAL_RATE,
   HUNDRED_PC,
@@ -33,6 +39,8 @@ module.exports = {
   PRICE_WBTC_USD,
   PRICE_USDC_USD,
   TOKEN_ID,
+  DAY,
   mockTokenManager,
-  rewardAmountForAsset
+  rewardAmountForAsset,
+  fastForward
 };

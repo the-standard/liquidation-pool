@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset } = require("./common");
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TokenManager,
@@ -19,6 +19,10 @@ describe('LiquidationPoolManager', async () => {
       TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
+  });
+  
+  afterEach(async () => {
+    await network.provider.send("hardhat_reset")
   });
 
   describe('distributeFees', async () => {
@@ -124,8 +128,10 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.mint(holder2.address, eurosStake2);
       await TST.connect(holder2).approve(LiquidationPool.address, tstStake2);
       await EUROs.connect(holder2).approve(LiquidationPool.address, eurosStake2);
-      await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2)
+      await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2);
 
+      await fastForward(DAY);
+      
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
 
       expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
@@ -216,6 +222,8 @@ describe('LiquidationPoolManager', async () => {
       const fees = ethers.utils.parseEther('1000');
       await EUROs.mint(LiquidationPoolManager.address, fees);
 
+      await fastForward(DAY);
+
       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
 
       expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
@@ -252,6 +260,8 @@ describe('LiquidationPoolManager', async () => {
       await TST.connect(holder2).approve(LiquidationPool.address, tstStake2);
       await EUROs.connect(holder2).approve(LiquidationPool.address, eurosStake2);
       await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2);
+
+      await fastForward(DAY);
 
       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
 
@@ -317,6 +327,8 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
       await LiquidationPool.connect(holder1).increasePosition(tstStake, eurosStake)
 
+      await fastForward(DAY);
+
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
 
       expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
@@ -334,6 +346,8 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.mint(holder1.address, eurosStake);
       await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
       await LiquidationPool.connect(holder1).increasePosition(0, eurosStake)
+
+      await fastForward(DAY);
 
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
 
