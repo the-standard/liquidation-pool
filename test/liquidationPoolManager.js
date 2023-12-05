@@ -88,6 +88,7 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.balanceOf(Protocol.address)).to.equal(feeBalance.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC));
 
       const newPoolFeePercentage = 30000;
+      await expect(LiquidationPoolManager.setPoolFeePercentage(newPoolFeePercentage)).to.be.reverted;
       await LiquidationPoolManager.setPoolFeePercentage(newPoolFeePercentage);
 
       await EUROs.mint(LiquidationPoolManager.address, feeBalance);
