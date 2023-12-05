@@ -2,35 +2,46 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "contracts/LiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
-contract LiquidationPoolManager {
+import "hardhat/console.sol";
 
+contract LiquidationPoolManager is Ownable {
+    uint32 public constant HUNDRED_PC = 100000;
+
+    address private immutable TST;
+    address private immutable EUROs;
+    address public immutable smartVaultManager;
+    address private immutable protocol;
     address public immutable pool;
 
-    address private immutable EUROs;
-    address private immutable TST;
-    address public immutable smartVaultManager;
+    uint32 public poolFeePercentage;
     
-    constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd) {
+    constructor(
+        address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address _protocol, uint32 _poolFeePercentage
+    ) Ownable(msg.sender) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd, ISmartVaultManager(_smartVaultManager).tokenManager()));
         TST = _TST;
         EUROs = _EUROs;
         smartVaultManager = _smartVaultManager;
+        protocol = _protocol;
+        poolFeePercentage = _poolFeePercentage;
     }
 
     receive() external payable {}
 
     function distributeFees() public {
         IERC20 eurosToken = IERC20(EUROs);
-        uint256 balance = eurosToken.balanceOf(address(this));
-        if (balance > 0) {
-            eurosToken.approve(pool, balance);
-            LiquidationPool(pool).distributeFees(balance);
+        uint256 _feesForPool = eurosToken.balanceOf(address(this)) * poolFeePercentage / HUNDRED_PC;
+        if (_feesForPool > 0) {
+            eurosToken.approve(pool, _feesForPool);
+            LiquidationPool(pool).distributeFees(_feesForPool);
         }
+        eurosToken.transfer(protocol, eurosToken.balanceOf(address(this)));
     }
 
     // TODO protect this function
@@ -57,6 +68,10 @@ contract LiquidationPoolManager {
         }
 
         LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, manager.collateralRate(), manager.HUNDRED_PC());
+    }
+
+    function setPoolFeePercentage(uint32 _poolFeePercentage) external onlyOwner {
+        poolFeePercentage = _poolFeePercentage;
     }
 
     // TODO function for us to take out leftovers

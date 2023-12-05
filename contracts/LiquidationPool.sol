@@ -45,7 +45,7 @@ contract LiquidationPool is ILiquidationPool {
         return _position.TST > _position.EUROs ? _position.EUROs : _position.TST;
     }
 
-    function stakeTotal() private view returns (uint256 _stakes) {
+    function getStakeTotal() private view returns (uint256 _stakes) {
         for (uint256 i = 0; i < holders.length; i++) {
             Position memory _position = positions[holders[i]];
             _stakes += stake(_position);
@@ -211,7 +211,7 @@ contract LiquidationPool is ILiquidationPool {
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable {
         consolidatePendingStakes();
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
-        uint256 stakeTotal = stakeTotal();
+        uint256 stakeTotal = getStakeTotal();
         uint256 burnEuros;
         uint256 nativePurchased;
         for (uint256 j = 0; j < holders.length; j++) {

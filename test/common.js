@@ -1,5 +1,9 @@
+const { ethers } = require('hardhat');
+const { BigNumber } = ethers;
+
 const COLLATERAL_RATE = 110000;
-const HUNDRED_PC = 100000;
+const HUNDRED_PC = BigNumber.from(100000);
+const POOL_FEE_PERCENTAGE = 50000;
 const PRICE_EUR_USD = 106000000;
 const PRICE_ETH_USD = 190000000000;
 const PRICE_WBTC_USD = 3500000000000;
@@ -34,6 +38,7 @@ const fastForward = async time => {
 module.exports = {
   COLLATERAL_RATE,
   HUNDRED_PC,
+  POOL_FEE_PERCENTAGE,
   PRICE_EUR_USD,
   PRICE_ETH_USD,
   PRICE_WBTC_USD,

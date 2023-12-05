@@ -1,14 +1,14 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY } = require("./common");
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPool, MockSmartVaultManager, TokenManager,
-  TST, EUROs, WBTC, USDC, holder1, holder2, holder3, holder4, holder5, MockERC20Factory;
+  TST, EUROs, WBTC, USDC, holder1, holder2, holder3, holder4, holder5, Protocol, MockERC20Factory;
 
   beforeEach(async () => {
-    [holder1, holder2, holder3, holder4, holder5] = await ethers.getSigners();
+    [holder1, holder2, holder3, holder4, holder5, Protocol] = await ethers.getSigners();
     MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
@@ -16,7 +16,7 @@ describe('LiquidationPoolManager', async () => {
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(PRICE_EUR_USD, 'EUR/USD'); // $1.06
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -25,9 +25,12 @@ describe('LiquidationPoolManager', async () => {
     await network.provider.send("hardhat_reset")
   });
 
+  const calculateFeeSegment = (feeTotal, poolTSTTotal, positionStakeValue, percentageToPool) => {
+    return feeTotal.mul(percentageToPool).div(HUNDRED_PC).mul(positionStakeValue).div(poolTSTTotal);
+  }
+
   describe('distributeFees', async () => {
-    it('distributes all the accrued EUROs fees in the contract between pool TST holders', async () => {
-      
+    it('distributes % of accrued EUROs fees to the pool stakers', async () => {
       const tstPosition1Value = ethers.utils.parseEther('1250');
       let poolTSTTotal = tstPosition1Value;
       await TST.mint(holder1.address, poolTSTTotal);
@@ -64,22 +67,67 @@ describe('LiquidationPoolManager', async () => {
       await LiquidationPoolManager.distributeFees();
 
       let { _position } = await LiquidationPool.position(holder1.address);
-      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition1Value).div(poolTSTTotal));
+      expect(_position.EUROs).to.equal(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition1Value, POOL_FEE_PERCENTAGE));
 
       ({ _position } = await LiquidationPool.position(holder2.address));
-      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition2Value).div(poolTSTTotal));
+      expect(_position.EUROs).to.equal(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition2Value, POOL_FEE_PERCENTAGE));
 
       ({ _position } = await LiquidationPool.position(holder3.address));
-      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition3Value).div(poolTSTTotal));
+      expect(_position.EUROs).to.equal(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition3Value, POOL_FEE_PERCENTAGE));
 
       ({ _position } = await LiquidationPool.position(holder4.address));
-      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition4Value).div(poolTSTTotal));
+      expect(_position.EUROs).to.equal(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition4Value, POOL_FEE_PERCENTAGE));
 
       ({ _position } = await LiquidationPool.position(holder5.address));
-      expect(_position.EUROs).to.equal(feeBalance.mul(tstPosition5Value).div(poolTSTTotal));
+      expect(_position.EUROs).to.equal(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition5Value, POOL_FEE_PERCENTAGE));
 
       expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(feeBalance);
+      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(feeBalance.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC));
+
+      // 50% should go to protocol wallet
+      expect(await EUROs.balanceOf(Protocol.address)).to.equal(feeBalance.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC));
+
+      const newPoolFeePercentage = 30000;
+      await LiquidationPoolManager.setPoolFeePercentage(newPoolFeePercentage);
+
+      await EUROs.mint(LiquidationPoolManager.address, feeBalance);
+
+      await LiquidationPoolManager.distributeFees();
+
+      ({ _position } = await LiquidationPool.position(holder1.address));
+      let expectedEUROs = calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition1Value, POOL_FEE_PERCENTAGE) // first distribution
+        .add(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition1Value, newPoolFeePercentage));
+      expect(_position.EUROs).to.equal(expectedEUROs);
+
+      ({ _position } = await LiquidationPool.position(holder2.address));
+      expectedEUROs = calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition2Value, POOL_FEE_PERCENTAGE)
+        .add(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition2Value, newPoolFeePercentage));
+      expect(_position.EUROs).to.equal(expectedEUROs);
+
+      ({ _position } = await LiquidationPool.position(holder3.address));
+      expectedEUROs = calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition3Value, POOL_FEE_PERCENTAGE)
+        .add(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition3Value, newPoolFeePercentage));
+      expect(_position.EUROs).to.equal(expectedEUROs);
+
+      ({ _position } = await LiquidationPool.position(holder4.address));
+      expectedEUROs = calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition4Value, POOL_FEE_PERCENTAGE)
+        .add(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition4Value, newPoolFeePercentage));
+      expect(_position.EUROs).to.equal(expectedEUROs);
+
+      ({ _position } = await LiquidationPool.position(holder5.address));
+      expectedEUROs = calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition5Value, POOL_FEE_PERCENTAGE)
+        .add(calculateFeeSegment(feeBalance, poolTSTTotal, tstPosition5Value, newPoolFeePercentage));
+      expect(_position.EUROs).to.equal(expectedEUROs);
+
+      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      const expectedPoolEUROs = feeBalance.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC) // first distribution
+        .add(feeBalance.mul(newPoolFeePercentage).div(HUNDRED_PC)) // second
+      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(expectedPoolEUROs);
+
+      // 50% should go to protocol wallet
+      const expectedProtocolEUROs = feeBalance.mul(HUNDRED_PC.sub(POOL_FEE_PERCENTAGE)).div(HUNDRED_PC) // first distribution
+      .add(feeBalance.mul(HUNDRED_PC.sub(newPoolFeePercentage)).div(HUNDRED_PC)) // second
+      expect(await EUROs.balanceOf(Protocol.address)).to.equal(expectedProtocolEUROs);
     });
   });
 
@@ -184,7 +232,7 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.totalSupply()).to.equal(estimatedSupply);
     });
 
-    it('does not distribute fees or liquidity if there is no TST staked', async () => {
+    it('forwards fees and rewards to protocol if there is no tst staked in pool', async () => {
       const fees = ethers.utils.parseEther('1000');
       const ethCollateral = ethers.utils.parseEther('0.1');
       const wbtcCollateral = BigNumber.from(1_000_000);
@@ -201,8 +249,8 @@ describe('LiquidationPoolManager', async () => {
 
       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
 
-      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(fees);
-      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(ethCollateral);
+      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
 
       const { _position } = await LiquidationPool.position(holder1.address);
       expect(_position.TST).to.equal(0);
@@ -232,8 +280,9 @@ describe('LiquidationPoolManager', async () => {
       // with discount user pays ~€81.48
       const expectedEUROsSpent = discounted(ethCollateral.mul(PRICE_ETH_USD).div(PRICE_EUR_USD))
       const { _position } = await LiquidationPool.position(holder1.address);
-      expect(_position.EUROs).to.equal(fees.sub(expectedEUROsSpent));
-      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(fees.sub(expectedEUROsSpent));
+      const expectedFeesInPool = fees.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC);
+      expect(_position.EUROs).to.equal(expectedFeesInPool.sub(expectedEUROsSpent));
+      expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(expectedFeesInPool.sub(expectedEUROsSpent));
     });
 
     it('returns unpurchased liquidated assets to protocol address', async () => {

@@ -1,14 +1,14 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE } = require("./common");
 
 describe('LiquidationPool', async () => {
-  let user1, user2, user3, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
+  let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
   MockERC20Factory, TST, EUROs;
 
   beforeEach(async () => {
-    [ user1, user2, user3 ] = await ethers.getSigners();
+    [ user1, user2, user3, Protocol ] = await ethers.getSigners();
     MockERC20Factory = await ethers.getContractFactory('MockERC20');
     TST = await MockERC20Factory.deploy('The Standard Token', 'TST', 18);
     EUROs = await (await ethers.getContractFactory('MockEUROs')).deploy();
@@ -16,7 +16,7 @@ describe('LiquidationPool', async () => {
     const { TokenManager } = await mockTokenManager();
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -106,13 +106,13 @@ describe('LiquidationPool', async () => {
       await TST.connect(user3).approve(LiquidationPool.address, tstStakeValue);
       await LiquidationPool.connect(user3).increasePosition(tstStakeValue, 0);
 
-      // should receive 10% of fees = 10 EUROs
+      // 50% of fees into pool, should receive 10% = 5% of 100 = 5;
       let { _position } = await LiquidationPool.position(user1.address);
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('10'));
+      expect(_position.EUROs).to.equal(ethers.utils.parseEther('5'));
 
-      // should receive 90% of fees = 90 EUROs
+      // 50% of fees into pool, should receive 90% = 45% of 100 = 45;
       ({_position} = await LiquidationPool.position(user2.address));
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('90'));
+      expect(_position.EUROs).to.equal(ethers.utils.parseEther('45'));
 
       // staking position after first round of fees already collected
       // should receive 0
@@ -129,20 +129,20 @@ describe('LiquidationPool', async () => {
       // increased position after second round of fees collected
       // has 10000 staked in pool of 200000
       // should have 10% of first round + 5% of second round
-      // = 10 + 5 = 15 EUROs
+      // = 5 + 2.5 = 7.5 EUROs
       ({_position} = await LiquidationPool.position(user1.address));
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('15'));
+      expect(_position.EUROs).to.equal(ethers.utils.parseEther('7.5'));
 
       // received 90 EUROs in first round
       // now has 45% of pool (90000 from 200000)
-      // 90 + 45 = 135 EUROs
+      // 45 + 22.5 = 67.5 EUROs
       ({_position} = await LiquidationPool.position(user2.address));
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('135'));
+      expect(_position.EUROs).to.equal(ethers.utils.parseEther('67.5'));
 
       // should receive 50% of second round of fees
-      // = 50% of 100 = 50 EUROs
+      // = 25% of 100 = 25 EUROs
       ({_position} = await LiquidationPool.position(user3.address));
-      expect(_position.EUROs).to.equal(ethers.utils.parseEther('50'));
+      expect(_position.EUROs).to.equal(ethers.utils.parseEther('25'));
     });
   });
 
@@ -207,14 +207,14 @@ describe('LiquidationPool', async () => {
 
       await fastForward(DAY);
 
-      // user1 should receive 12.5% of fees when they decrease their position;
-      const distributedFees1 = ethers.utils.parseEther('2.5');
+      // user1 should receive 12.5% of 50% of fees when they decrease their position;
+      const distributedFees1 = ethers.utils.parseEther('1.25');
       await LiquidationPool.decreasePosition(tstStake1, distributedFees1);
       expect(await TST.balanceOf(user1.address)).to.equal(tstStake1);
       expect(await EUROs.balanceOf(user1.address)).to.equal(distributedFees1);
 
-      // user1 should receive 87.5% of fees when another user decreased position;
-      const distributedFees2 = ethers.utils.parseEther('17.5');
+      // user1 should receive 87.5% of 50% fees when another user decreased position;
+      const distributedFees2 = ethers.utils.parseEther('8.75');
       expect(await TST.balanceOf(user2.address)).to.equal(0);
       expect(await EUROs.balanceOf(user2.address)).to.equal(0);
       const { _position } = await LiquidationPool.position(user2.address);
