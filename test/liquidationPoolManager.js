@@ -240,9 +240,11 @@ describe('LiquidationPoolManager', async () => {
       const fees = ethers.utils.parseEther('1000');
       const ethCollateral = ethers.utils.parseEther('0.1');
       const wbtcCollateral = BigNumber.from(1_000_000);
+      const usdcCollateral = BigNumber.from(100_000_000);
 
       await holder1.sendTransaction({to: LiquidationPoolManager.address, value: ethCollateral});
       await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
+      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
 
       const eurosStake = ethers.utils.parseEther('1000');
       await EUROs.mint(holder1.address, eurosStake);
@@ -251,14 +253,23 @@ describe('LiquidationPoolManager', async () => {
 
       await EUROs.mint(LiquidationPoolManager.address, fees);
 
+      const protocolBalance = await ethers.provider.getBalance(Protocol.address);
+
       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
 
       expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
       expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
 
       const { _position } = await LiquidationPool.position(holder1.address);
       expect(_position.TST).to.equal(0);
       expect(_position.EUROs).to.equal(eurosStake);
+
+      expect(await EUROs.balanceOf(Protocol.address)).to.equal(fees);
+      expect(await ethers.provider.getBalance(Protocol.address)).to.equal(protocolBalance.add(ethCollateral));
+      expect(await WBTC.balanceOf(Protocol.address)).to.equal(wbtcCollateral);
+      expect(await USDC.balanceOf(Protocol.address)).to.equal(usdcCollateral);
     });
 
     it('distributes fees before running liquidation', async () => {
@@ -355,13 +366,15 @@ describe('LiquidationPoolManager', async () => {
       // all ETH should have moved to pool
       expect(await await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
       expect(await await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
-      // some WBTC should have moved to pool
+      // some WBTC should have moved to pool, some forwarded to protocol wallet
       const expectedWBTCInPool = expectedWBTCPurchased1.add(expectedWBTCPurchased2);
       expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(expectedWBTCInPool);
-      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(wbtcCollateral.sub(expectedWBTCInPool));
-      // all USDC should have remained in manager
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await WBTC.balanceOf(Protocol.address)).to.equal(wbtcCollateral.sub(expectedWBTCInPool));
+      // all USDC should have been forwarded to protocol wallet
       expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(0);
-      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(usdcCollateral);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await USDC.balanceOf(Protocol.address)).to.equal(usdcCollateral);
     });
 
     it('increases existing rewards with multiple liquidations', async () => {

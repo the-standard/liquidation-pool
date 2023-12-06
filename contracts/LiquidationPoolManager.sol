@@ -16,13 +16,13 @@ contract LiquidationPoolManager is Ownable {
     address private immutable TST;
     address private immutable EUROs;
     address public immutable smartVaultManager;
-    address private immutable protocol;
+    address payable private immutable protocol;
     address public immutable pool;
 
     uint32 public poolFeePercentage;
     
     constructor(
-        address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address _protocol, uint32 _poolFeePercentage
+        address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address payable _protocol, uint32 _poolFeePercentage
     ) Ownable(msg.sender) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd, ISmartVaultManager(_smartVaultManager).tokenManager()));
         TST = _TST;
@@ -42,6 +42,19 @@ contract LiquidationPoolManager is Ownable {
             LiquidationPool(pool).distributeFees(_feesForPool);
         }
         eurosToken.transfer(protocol, eurosToken.balanceOf(address(this)));
+    }
+
+    function forwardRemainingRewards(ITokenManager.Token[] memory _tokens) private {
+        for (uint256 i = 0; i < _tokens.length; i++) {
+            ITokenManager.Token memory _token = _tokens[i];
+            if (_token.addr == address(0)) {
+                uint256 balance = address(this).balance;
+                if (balance > 0) protocol.call{value: balance}("");
+            } else {
+                uint256 balance = IERC20(_token.addr).balanceOf(address(this));
+                if (balance > 0) IERC20(_token.addr).transfer(protocol, balance);
+            }
+        }
     }
 
     // TODO protect this function
@@ -68,6 +81,7 @@ contract LiquidationPoolManager is Ownable {
         }
 
         LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, manager.collateralRate(), manager.HUNDRED_PC());
+        forwardRemainingRewards(tokens);
     }
 
     function setPoolFeePercentage(uint32 _poolFeePercentage) external onlyOwner {
