@@ -1,5 +1,5 @@
 const { ethers } = require("hardhat");
-const { ETH, DEFAULT_ETH_USD_PRICE, DEFAULT_EUR_USD_PRICE, DEFAULT_COLLATERAL_RATE, getNFTMetadataContract } = require("../test/common");
+const { POOL_FEE_PERCENTAGE } = require("../test/common");
 
 async function main() {
   const [ me ] = await ethers.getSigners();
@@ -7,7 +7,7 @@ async function main() {
   const LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
     '0xcD2204188db24d8db2b15151357e43365443B113', '0x5D1684E5b989Eb232ac84D6b73D783FE44114C2b',
     '0xBbB704f184E716410a9c00435530eA055CfAD187', '0x34319A7424bC39C29958d2eb905D743C2b1cAFCa',
-    me.address, 50000
+    me.address, POOL_FEE_PERCENTAGE
   );
   await LiquidationPoolManager.deployed();
 
