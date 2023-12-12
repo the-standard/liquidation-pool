@@ -49,7 +49,10 @@ contract LiquidationPoolManager is Ownable {
             ITokenManager.Token memory _token = _tokens[i];
             if (_token.addr == address(0)) {
                 uint256 balance = address(this).balance;
-                if (balance > 0) protocol.call{value: balance}("");
+                if (balance > 0) {
+                    (bool _sent,) = protocol.call{value: balance}("");
+                    require(_sent);
+                }
             } else {
                 uint256 balance = IERC20(_token.addr).balanceOf(address(this));
                 if (balance > 0) IERC20(_token.addr).transfer(protocol, balance);
@@ -57,7 +60,6 @@ contract LiquidationPoolManager is Ownable {
         }
     }
 
-    // TODO protect this function
     function runLiquidation(uint256 _tokenId) external {
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
         manager.liquidateVault(_tokenId);
@@ -87,6 +89,4 @@ contract LiquidationPoolManager is Ownable {
     function setPoolFeePercentage(uint32 _poolFeePercentage) external onlyOwner {
         poolFeePercentage = _poolFeePercentage;
     }
-
-    // TODO function for us to take out leftovers
 }

@@ -126,7 +126,6 @@ contract LiquidationPool is ILiquidationPool {
                 positions[_stake.holder].TST += _stake.TST;
                 positions[_stake.holder].EUROs += _stake.EUROs;
                 deletePendingStake(uint256(i));
-                addUniqueHolder(_stake.holder);
                 // pause iterating on loop because there has been a deletion. "next" item has same index
                 i--;
             }
@@ -140,6 +139,7 @@ contract LiquidationPool is ILiquidationPool {
         if (_tstVal > 0) IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
         if (_eurosVal > 0) IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
         pendingStakes.push(PendingStake(msg.sender, block.timestamp, _tstVal, _eurosVal));
+        addUniqueHolder(msg.sender);
     }
 
     function deletePosition(Position memory _position) private {
@@ -174,8 +174,8 @@ contract LiquidationPool is ILiquidationPool {
             if (_rewardAmount > 0) {
                 delete rewards[abi.encodePacked(msg.sender, _token.symbol)];
                 if (_token.addr == address(0)) {
-                    // TODO do something with return value
-                    payable(msg.sender).call{value: _rewardAmount}("");
+                    (bool _sent,) = payable(msg.sender).call{value: _rewardAmount}("");
+                    require(_sent);
                 } else {
                     IERC20(_token.addr).transfer(msg.sender, _rewardAmount);
                 }   
@@ -190,7 +190,6 @@ contract LiquidationPool is ILiquidationPool {
             IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _amount);
             for (uint256 i = 0; i < holders.length; i++) {
                 address _holder = holders[i];
-                (uint256 _pendingTST,) = holderPendingStakes(_holder);
                 positions[_holder].EUROs += _amount * positions[_holder].TST / tstTotal;
             }
             for (uint256 i = 0; i < pendingStakes.length; i++) {
@@ -202,8 +201,8 @@ contract LiquidationPool is ILiquidationPool {
     function returnUnpurchasedNative(ILiquidationPoolManager.Asset[] memory _assets, uint256 _nativePurchased) private {
         for (uint256 i = 0; i < _assets.length; i++) {
             if (_assets[i].token.addr == address(0) && _assets[i].token.symbol != bytes32(0)) {
-                // TODO do something with return value
-                manager.call{value: _assets[i].amount - _nativePurchased}("");
+                (bool _sent,) = manager.call{value: _assets[i].amount - _nativePurchased}("");
+                require(_sent);
             }
         }
     }
@@ -220,7 +219,7 @@ contract LiquidationPool is ILiquidationPool {
             if (_positionStake > 0) {
                 for (uint256 i = 0; i < _assets.length; i++) {
                     ILiquidationPoolManager.Asset memory asset = _assets[i];
-                    if (asset.amount > 0 && _position.EUROs > 0) {
+                    if (asset.amount > 0) {
                         (,int256 assetPriceUsd,,,) = Chainlink.AggregatorV3Interface(asset.token.clAddr).latestRoundData();
                         uint256 _portion = asset.amount * _positionStake / stakeTotal;
                         uint256 costInEuros = _portion * 10 ** (18 - asset.token.dec) * uint256(assetPriceUsd) / uint256(priceEurUsd)
@@ -242,7 +241,7 @@ contract LiquidationPool is ILiquidationPool {
             }
             positions[holders[j]] = _position;
         }
-        IEUROs(EUROs).burn(address(this), burnEuros);
+        if (burnEuros > 0) IEUROs(EUROs).burn(address(this), burnEuros);
         returnUnpurchasedNative(_assets, nativePurchased);
     }
 }

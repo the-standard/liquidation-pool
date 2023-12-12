@@ -23,8 +23,8 @@ contract MockSmartVaultManager is ISmartVaultManager {
         for (uint256 i = 0; i < tokens.length; i++) {
             ITokenManager.Token memory token = tokens[i];
             if (token.addr == address(0) && address(this).balance > 0) {
-                // TODO do something with return value
-                payable(msg.sender).call{value: address(this).balance}("");
+                (bool _sent,) = payable(msg.sender).call{value: address(this).balance}("");
+                require(_sent);
                 liquidated = true;
             } else if (token.addr != address(0)) {
                 IERC20 ierc20 = IERC20(token.addr);
