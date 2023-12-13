@@ -21,9 +21,7 @@ contract LiquidationPoolManager is Ownable {
 
     uint32 public poolFeePercentage;
     
-    constructor(
-        address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address payable _protocol, uint32 _poolFeePercentage
-    ) Ownable(msg.sender) {
+    constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address payable _protocol, uint32 _poolFeePercentage) Ownable(msg.sender) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd, ISmartVaultManager(_smartVaultManager).tokenManager()));
         TST = _TST;
         EUROs = _EUROs;
@@ -81,7 +79,6 @@ contract LiquidationPoolManager is Ownable {
                 }
             }
         }
-
         LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, manager.collateralRate(), manager.HUNDRED_PC());
         forwardRemainingRewards(tokens);
     }

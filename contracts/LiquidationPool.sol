@@ -83,7 +83,6 @@ contract LiquidationPool is ILiquidationPool {
     function position(address _holder) external view returns(Position memory _position, Reward[] memory _rewards) {
         _position = positions[_holder];
         (uint256 _pendingTST, uint256 _pendingEUROs) = holderPendingStakes(_holder);
-
         _position.EUROs += _pendingEUROs;
         _position.TST += _pendingTST;
         if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / getTstTotal();
@@ -150,19 +149,15 @@ contract LiquidationPool is ILiquidationPool {
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         consolidatePendingStakes();
         ILiquidationPoolManager(manager).distributeFees();
-
         require(_tstVal <= positions[msg.sender].TST && _eurosVal <= positions[msg.sender].EUROs, "invalid-decr-amount");
-
         if (_tstVal > 0) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
             positions[msg.sender].TST -= _tstVal;
         }
-
         if (_eurosVal > 0) {
             IERC20(EUROs).safeTransfer(msg.sender, _eurosVal);
             positions[msg.sender].EUROs -= _eurosVal;
         }
-
         if (empty(positions[msg.sender])) deletePosition(positions[msg.sender]);
     }
 
