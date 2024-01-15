@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -281,16 +281,13 @@ describe('LiquidationPool', async () => {
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(0);
       expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(0);
     });
-
-    xit('claims rewards automatically if position is going to be deleted', async () => {
-
-    });
   });
 
-  // do we need upgrades? should we just make it pausable?
-  describe('upgrade', async () => {
-    xit('maintains state of positions / rewards / pool balance with upgrades', async () => {
-
+  describe('distributions', async () => {
+    it('should only allow liquidation pool manager to distribute fees and assets', async () => {
+      const feeAmount = ethers.utils.parseEther('100');
+      await expect(LiquidationPool.distributeFees(feeAmount)).to.be.revertedWith('err-invalid-user');
+      await expect(LiquidationPool.distributeAssets([], COLLATERAL_RATE, HUNDRED_PC)).to.be.revertedWith('err-invalid-user');
     });
   });
 });

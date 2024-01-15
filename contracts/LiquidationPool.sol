@@ -202,7 +202,7 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable {
+    function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable onlyManager {
         consolidatePendingStakes();
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         uint256 stakeTotal = getStakeTotal();
