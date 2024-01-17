@@ -19,14 +19,14 @@ contract LiquidationPool is ILiquidationPool {
 
     address[] public holders;
     mapping(address => Position) private positions;
+    mapping(address => PendingStake) private pendingStakes;
     mapping(bytes => uint256) private rewards;
-    PendingStake[] private pendingStakes;
     address payable public manager;
     address public tokenManager;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { bytes32 symbol; uint256 amount; uint8 dec; }
-    struct PendingStake { address holder; uint256 createdAt; uint256 TST; uint256 EUROs; }
+    struct PendingStake { uint256 updatedAt; uint256 TST; uint256 EUROs; }
 
     constructor(address _TST, address _EUROs, address _eurUsd, address _tokenManager) {
         TST = _TST;
@@ -55,9 +55,7 @@ contract LiquidationPool is ILiquidationPool {
     function getTstTotal() private view returns (uint256 _tst) {
         for (uint256 i = 0; i < holders.length; i++) {
             _tst += positions[holders[i]].TST;
-        }
-        for (uint256 i = 0; i < pendingStakes.length; i++) {
-            _tst += pendingStakes[i].TST;
+            _tst += pendingStakes[holders[i]].TST;
         }
     }
 
@@ -69,22 +67,12 @@ contract LiquidationPool is ILiquidationPool {
         }
         return _rewards;
     }
-
-    function holderPendingStakes(address _holder) private view returns (uint256 _pendingTST, uint256 _pendingEUROs) {
-        for (uint256 i = 0; i < pendingStakes.length; i++) {
-            PendingStake memory _pendingStake = pendingStakes[i];
-            if (_pendingStake.holder == _holder) {
-                _pendingTST += _pendingStake.TST;
-                _pendingEUROs += _pendingStake.EUROs;
-            }
-        }
-    }
     
     function position(address _holder) external view returns(Position memory _position, Reward[] memory _rewards) {
         _position = positions[_holder];
-        (uint256 _pendingTST, uint256 _pendingEUROs) = holderPendingStakes(_holder);
-        _position.EUROs += _pendingEUROs;
-        _position.TST += _pendingTST;
+        PendingStake memory _pendingStake = pendingStakes[_holder];
+        _position.EUROs += _pendingStake.EUROs;
+        _position.TST += _pendingStake.TST;
         if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / getTstTotal();
         _rewards = findRewards(_holder);
     }
@@ -102,13 +90,6 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function deletePendingStake(uint256 _i) private {
-        for (uint256 i = _i; i < pendingStakes.length - 1; i++) {
-            pendingStakes[i] = pendingStakes[i+1];
-        }
-        pendingStakes.pop();
-    }
-
     function addUniqueHolder(address _holder) private {
         for (uint256 i = 0; i < holders.length; i++) {
             if (holders[i] == _holder) return;
@@ -118,15 +99,14 @@ contract LiquidationPool is ILiquidationPool {
 
     function consolidatePendingStakes() private {
         uint256 deadline = block.timestamp - 1 days;
-        for (int256 i = 0; uint256(i) < pendingStakes.length; i++) {
-            PendingStake memory _stake = pendingStakes[uint256(i)];
-            if (_stake.createdAt < deadline) {
-                positions[_stake.holder].holder = _stake.holder;
-                positions[_stake.holder].TST += _stake.TST;
-                positions[_stake.holder].EUROs += _stake.EUROs;
-                deletePendingStake(uint256(i));
-                // pause iterating on loop because there has been a deletion. "next" item has same index
-                i--;
+        for (uint256 i = 0; i < holders.length; i++) {
+            address _holder = holders[i];
+            PendingStake memory _pendingStake = pendingStakes[_holder];
+            if (_pendingStake.updatedAt < deadline) {
+                positions[_holder].holder = _holder;
+                positions[_holder].TST += _pendingStake.TST;
+                positions[_holder].EUROs += _pendingStake.EUROs;
+                delete pendingStakes[_holder];
             }
         }
     }
@@ -134,10 +114,12 @@ contract LiquidationPool is ILiquidationPool {
     function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         require(_tstVal > 0 || _eurosVal > 0);
         consolidatePendingStakes();
-        ILiquidationPoolManager(manager).distributeFees();
+        ILiquidationPoolManager(manager).distributeAssets();
         if (_tstVal > 0) IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
         if (_eurosVal > 0) IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
-        pendingStakes.push(PendingStake(msg.sender, block.timestamp, _tstVal, _eurosVal));
+        pendingStakes[msg.sender].updatedAt = block.timestamp;
+        pendingStakes[msg.sender].TST += _tstVal;
+        pendingStakes[msg.sender].EUROs += _eurosVal;
         addUniqueHolder(msg.sender);
     }
 
@@ -148,7 +130,7 @@ contract LiquidationPool is ILiquidationPool {
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         consolidatePendingStakes();
-        ILiquidationPoolManager(manager).distributeFees();
+        ILiquidationPoolManager(manager).distributeAssets();
         require(_tstVal <= positions[msg.sender].TST && _eurosVal <= positions[msg.sender].EUROs, "invalid-decr-amount");
         if (_tstVal > 0) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
@@ -186,9 +168,7 @@ contract LiquidationPool is ILiquidationPool {
             for (uint256 i = 0; i < holders.length; i++) {
                 address _holder = holders[i];
                 positions[_holder].EUROs += _amount * positions[_holder].TST / tstTotal;
-            }
-            for (uint256 i = 0; i < pendingStakes.length; i++) {
-                pendingStakes[i].EUROs += _amount * pendingStakes[i].TST / tstTotal;
+                pendingStakes[_holder].EUROs += _amount * pendingStakes[_holder].TST / tstTotal;
             }
         }
     }
