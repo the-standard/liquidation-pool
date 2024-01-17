@@ -157,7 +157,7 @@ describe('LiquidationPoolManager', async () => {
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).to.be.revertedWith('vault-not-undercollateralised');
     });
 
-    it('distributes liquidated assets among stake holders if there is enough EUROs to purchase', async () => {
+    it('distributes liquidated assets among stake holders if there is enough EUROs to purchase, excludes pending stakes', async () => {
       const ethCollateral = ethers.utils.parseEther('0.5');
       const wbtcCollateral = BigNumber.from(1_000_000);
       const usdcCollateral = BigNumber.from(500_000_000);
@@ -183,6 +183,15 @@ describe('LiquidationPoolManager', async () => {
       await LiquidationPool.connect(holder2).increasePosition(tstStake2, eurosStake2);
 
       await fastForward(DAY);
+
+      // this is staked too late and not eligible for reward
+      const tstStake3 = ethers.utils.parseEther('5000');
+      const eurosStake3 = ethers.utils.parseEther('5000');
+      await TST.mint(holder3.address, tstStake3);
+      await EUROs.mint(holder3.address, eurosStake3);
+      await TST.connect(holder3).approve(LiquidationPool.address, tstStake3);
+      await EUROs.connect(holder3).approve(LiquidationPool.address, eurosStake3);
+      await LiquidationPool.connect(holder3).increasePosition(tstStake3, eurosStake3);
       
       await expect(LiquidationPoolManager.runLiquidation(TOKEN_ID)).not.to.be.reverted;
 
@@ -232,7 +241,7 @@ describe('LiquidationPoolManager', async () => {
       expect(_position.TST).to.equal(tstStake2);
       expect(_position.EUROs).to.equal(eurosStake2.sub(purchasePrice2));
 
-      const estimatedSupply = eurosStake1.add(eurosStake2).sub(purchasePrice1).sub(purchasePrice2);
+      const estimatedSupply = eurosStake1.add(eurosStake2).add(eurosStake3).sub(purchasePrice1).sub(purchasePrice2);
       expect(await EUROs.totalSupply()).to.equal(estimatedSupply);
     });
 
@@ -242,7 +251,7 @@ describe('LiquidationPoolManager', async () => {
       const wbtcCollateral = BigNumber.from(1_000_000);
       const usdcCollateral = BigNumber.from(100_000_000);
 
-      await holder1.sendTransaction({to: LiquidationPoolManager.address, value: ethCollateral});
+      await holder1.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
       await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
       await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
 

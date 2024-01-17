@@ -8,8 +8,6 @@ import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
-import "hardhat/console.sol";
-
 contract LiquidationPoolManager is Ownable {
     uint32 public constant HUNDRED_PC = 100000;
 
@@ -58,10 +56,16 @@ contract LiquidationPoolManager is Ownable {
         }
     }
 
+    function distributeAssets() public {
+        ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
+        forwardRemainingRewards(ITokenManager(manager.tokenManager()).getAcceptedTokens());
+        distributeFees();
+    }
+
     function runLiquidation(uint256 _tokenId) external {
+        distributeAssets();
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
         manager.liquidateVault(_tokenId);
-        distributeFees();
         ITokenManager.Token[] memory tokens = ITokenManager(manager.tokenManager()).getAcceptedTokens();
         ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
         uint256 ethBalance;
