@@ -191,6 +191,46 @@ describe('LiquidationPool', async () => {
       expect(await EUROs.balanceOf(user1.address)).to.equal(balance);
     });
 
+    it('should not remove holder if position cleared but still unconsolidated pending stake', async () => {
+      const balance = ethers.utils.parseEther('10000');
+      await TST.mint(user1.address, balance);
+      await EUROs.mint(user1.address, balance);
+
+      await TST.approve(LiquidationPool.address, balance);
+      await EUROs.approve(LiquidationPool.address, balance);
+
+      await LiquidationPool.increasePosition(balance, balance);
+
+      // consolidate first part of position
+      await fastForward(DAY);
+      
+      await TST.mint(user1.address, balance);
+      await EUROs.mint(user1.address, balance);
+
+      await TST.approve(LiquidationPool.address, balance);
+      await EUROs.approve(LiquidationPool.address, balance);
+
+      await LiquidationPool.increasePosition(balance, balance);
+
+      let { _position } = await LiquidationPool.position(user1.address);
+      expect(_position.TST).to.equal(balance.mul(2))
+      expect(_position.EUROs).to.equal(balance.mul(2))
+
+      // remove consolidated part
+      await LiquidationPool.decreasePosition(balance, balance);
+
+      ({ _position } = await LiquidationPool.position(user1.address));
+      expect(_position.TST).to.equal(balance);
+      expect(_position.EUROs).to.equal(balance);
+
+      // consolidate second part of position
+      await fastForward(DAY);
+
+      ({ _position } = await LiquidationPool.position(user1.address));
+      expect(_position.TST).to.equal(balance);
+      expect(_position.EUROs).to.equal(balance);
+    });
+
     it('triggers a distribution of fees before decreasing position', async () => {
       const tstStake1 = ethers.utils.parseEther('100000');
       await TST.mint(user1.address, tstStake1);

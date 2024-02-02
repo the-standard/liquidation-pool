@@ -10,6 +10,8 @@ import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
+import "hardhat/console.sol";
+
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
 
@@ -81,6 +83,10 @@ contract LiquidationPool is ILiquidationPool {
         return _position.TST == 0 && _position.EUROs == 0;
     }
 
+    function emptyPending(PendingStake memory _pendingStake) private pure returns (bool) {
+        return _pendingStake.TST == 0 && _pendingStake.EUROs == 0;
+    }
+
     function deleteHolder(address _holder) private {
         for (uint256 i = 0; i < holders.length; i++) {
             if (holders[i] == _holder) {
@@ -140,7 +146,7 @@ contract LiquidationPool is ILiquidationPool {
             IERC20(EUROs).safeTransfer(msg.sender, _eurosVal);
             positions[msg.sender].EUROs -= _eurosVal;
         }
-        if (empty(positions[msg.sender])) deletePosition(positions[msg.sender]);
+        if (empty(positions[msg.sender]) && emptyPending(pendingStakes[msg.sender])) deletePosition(positions[msg.sender]);
     }
 
     function claimRewards() external {
