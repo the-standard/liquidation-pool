@@ -79,12 +79,11 @@ contract LiquidationPool is ILiquidationPool {
         _rewards = findRewards(_holder);
     }
 
-    function empty(Position memory _position) private pure returns (bool) {
-        return _position.TST == 0 && _position.EUROs == 0;
-    }
-
-    function emptyPending(PendingStake memory _pendingStake) private pure returns (bool) {
-        return _pendingStake.TST == 0 && _pendingStake.EUROs == 0;
+    function emptyPositions(address _holder) private view returns (bool) {
+        Position memory _position = positions[_holder];
+        PendingStake memory _pendingStake = pendingStakes[_holder];
+        return (_position.EUROs == 0 && _position.TST == 0 &&
+            _pendingStake.EUROs == 0 && _pendingStake.TST == 0);
     }
 
     function deleteHolder(address _holder) private {
@@ -146,7 +145,7 @@ contract LiquidationPool is ILiquidationPool {
             IERC20(EUROs).safeTransfer(msg.sender, _eurosVal);
             positions[msg.sender].EUROs -= _eurosVal;
         }
-        if (empty(positions[msg.sender]) && emptyPending(pendingStakes[msg.sender])) deletePosition(positions[msg.sender]);
+        if (emptyPositions(msg.sender)) deletePosition(positions[msg.sender]);
     }
 
     function claimRewards() external {
