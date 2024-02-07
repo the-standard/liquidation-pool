@@ -8,6 +8,7 @@ const PRICE_EUR_USD = 106000000;
 const PRICE_ETH_USD = 190000000000;
 const PRICE_WBTC_USD = 3500000000000;
 const PRICE_USDC_USD = 100000000;
+const POOL_HOLDER_LIMIT = 100;
 const TOKEN_ID = 1;
 const DAY = 60 * 60 * 24;
 
@@ -45,6 +46,7 @@ module.exports = {
   PRICE_USDC_USD,
   TOKEN_ID,
   DAY,
+  POOL_HOLDER_LIMIT,
   mockTokenManager,
   rewardAmountForAsset,
   fastForward

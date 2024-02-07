@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, POOL_HOLDER_LIMIT } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -16,7 +16,7 @@ describe('LiquidationPool', async () => {
     const { TokenManager } = await mockTokenManager();
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -143,6 +143,27 @@ describe('LiquidationPool', async () => {
       // = 25% of 100 = 25 EUROs
       ({_position} = await LiquidationPool.position(user3.address));
       expect(_position.EUROs).to.equal(ethers.utils.parseEther('25'));
+    });
+
+    it('does not allow more holders than set limit', async () => {
+      const signers = await ethers.getSigners();
+      const tstStake = await ethers.utils.parseEther('100');
+
+      for (let i = 0; i < POOL_HOLDER_LIMIT; i++) {
+        const signer = signers[i];
+        await TST.mint(signer.address, tstStake);
+        await TST.connect(signer).approve(LiquidationPool.address, tstStake);
+
+        const increase = LiquidationPool.connect(signer).increasePosition(tstStake, 0);
+        await expect(increase).not.to.be.reverted;
+      }
+
+      const signer = signers[POOL_HOLDER_LIMIT];
+      await TST.mint(signer.address, tstStake);
+      await TST.connect(signer).approve(LiquidationPool.address, tstStake);
+
+      const increase = LiquidationPool.connect(signer).increasePosition(tstStake, 0);
+      await expect(increase).to.be.revertedWith('err-holder-limit');
     });
   });
 

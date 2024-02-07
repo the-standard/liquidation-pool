@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE } = require("./common");
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPoolManagerContract, LiquidationPool, MockSmartVaultManager, TokenManager,
@@ -17,7 +17,7 @@ describe('LiquidationPoolManager', async () => {
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(PRICE_EUR_USD, 'EUR/USD'); // $1.06
     LiquidationPoolManagerContract = await ethers.getContractFactory('LiquidationPoolManager');
     LiquidationPoolManager = await LiquidationPoolManagerContract.deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -432,5 +432,38 @@ describe('LiquidationPoolManager', async () => {
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
       expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(usdcCollateral);
     });
-  });
+  })
+  
+  // it('can support x amount of stakers', async () => {
+  //   const signers = await ethers.getSigners();
+
+  //   for (let i = 0; i < signers.length; i++) {
+  //     console.log(i)
+  //     const fees = await ethers.utils.parseEther('10');
+  //     await EUROs.mint(LiquidationPoolManager.address, fees)
+  //     const signer = signers[i];
+  //     const stakeValue = ethers.utils.parseEther('500');
+  //     await TST.mint(signer.address, stakeValue);
+  //     await EUROs.mint(signer.address, stakeValue);
+  //     await TST.connect(signer).approve(LiquidationPool.address, stakeValue);
+  //     await EUROs.connect(signer).approve(LiquidationPool.address, stakeValue);
+  //     console.log('increase gas',await LiquidationPool.connect(signer).estimateGas.increasePosition(stakeValue, stakeValue))
+  //     await LiquidationPool.connect(signer).increasePosition(stakeValue, stakeValue);
+  //     await fastForward(DAY);
+
+  //     await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethers.utils.parseEther('0.1')});
+  //     await WBTC.mint(MockSmartVaultManager.address, 1000000);
+  //     await USDC.mint(MockSmartVaultManager.address, 10000000);
+
+  //     console.log('liquidation gas',await LiquidationPoolManager.estimateGas.runLiquidation(TOKEN_ID))
+  //     await LiquidationPoolManager.runLiquidation(TOKEN_ID)
+
+  //     console.log('claim gas',await LiquidationPool.connect(signer).estimateGas.claimRewards())
+  //     await LiquidationPool.connect(signer).claimRewards();
+  //     console.log('decrease gas',await LiquidationPool.connect(signer).estimateGas.decreasePosition(ethers.utils.parseEther('250'), ethers.utils.parseEther('5')))
+  //     await LiquidationPool.connect(signer).decreasePosition(ethers.utils.parseEther('250'), ethers.utils.parseEther('5'));
+
+  //     console.log((await LiquidationPool.position(signer.address))._position);
+  //   }
+  // });
 });
