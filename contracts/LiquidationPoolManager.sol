@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "contracts/LiquidationPool.sol";
 import "contracts/interfaces/ILiquidationPoolManager.sol";
@@ -9,6 +10,8 @@ import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
 contract LiquidationPoolManager is Ownable {
+    using SafeERC20 for IERC20;
+
     uint32 public constant HUNDRED_PC = 100000;
 
     address private immutable TST;
@@ -51,7 +54,7 @@ contract LiquidationPoolManager is Ownable {
                 }
             } else {
                 uint256 balance = IERC20(_token.addr).balanceOf(address(this));
-                if (balance > 0) IERC20(_token.addr).transfer(protocol, balance);
+                if (balance > 0) IERC20(_token.addr).safeTransfer(protocol, balance);
             }
         }
     }
