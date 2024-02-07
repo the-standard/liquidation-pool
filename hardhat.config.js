@@ -25,6 +25,11 @@ module.exports = {
     //     blockNumber: 1746910
     //   }
     // },
+    hardhat: {
+      accounts: {
+        count: 101
+      }
+    }
   },
   etherscan: {
     apiKey: {
@@ -41,5 +46,8 @@ module.exports = {
         }
       }
     ]
+  },
+  mocha: {
+    timeout: 10000
   }
 };
