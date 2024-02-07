@@ -6,6 +6,7 @@ import "contracts/interfaces/ITokenManager.sol";
 interface ILiquidationPoolManager {
     struct Asset { ITokenManager.Token token; uint256 amount; }
 
+    function poolHolderLimit() external view returns (uint16);
     function distributeAssets() external;
     function runLiquidation(uint256 _tokenId) external;
 }

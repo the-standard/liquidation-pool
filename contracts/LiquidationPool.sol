@@ -72,6 +72,7 @@ contract LiquidationPool is ILiquidationPool {
     
     function position(address _holder) external view returns(Position memory _position, Reward[] memory _rewards) {
         _position = positions[_holder];
+        _position.holder = _holder;
         PendingStake memory _pendingStake = pendingStakes[_holder];
         _position.EUROs += _pendingStake.EUROs;
         _position.TST += _pendingStake.TST;
@@ -99,6 +100,8 @@ contract LiquidationPool is ILiquidationPool {
         for (uint256 i = 0; i < holders.length; i++) {
             if (holders[i] == _holder) return;
         }
+        require(holders.length < ILiquidationPoolManager(manager).poolHolderLimit(),
+            "err-holder-limit");
         holders.push(_holder);
     }
 

@@ -21,14 +21,16 @@ contract LiquidationPoolManager is Ownable {
     address public immutable pool;
 
     uint32 public poolFeePercentage;
+    uint16 public poolHolderLimit;
     
-    constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address payable _protocol, uint32 _poolFeePercentage) Ownable(msg.sender) {
+    constructor(address _TST, address _EUROs, address _smartVaultManager, address _eurUsd, address payable _protocol, uint32 _poolFeePercentage, uint16 _poolHolderLimit) Ownable(msg.sender) {
         pool = address(new LiquidationPool(_TST, _EUROs, _eurUsd, ISmartVaultManager(_smartVaultManager).tokenManager()));
         TST = _TST;
         EUROs = _EUROs;
         smartVaultManager = _smartVaultManager;
         protocol = _protocol;
         poolFeePercentage = _poolFeePercentage;
+        poolHolderLimit = _poolHolderLimit;
     }
 
     receive() external payable {}
@@ -92,5 +94,9 @@ contract LiquidationPoolManager is Ownable {
 
     function setPoolFeePercentage(uint32 _poolFeePercentage) external onlyOwner {
         poolFeePercentage = _poolFeePercentage;
+    }
+
+    function setPoolHolderLimit(uint16 _poolHolderLimit) external onlyOwner {
+        poolHolderLimit = _poolHolderLimit;
     }
 }
