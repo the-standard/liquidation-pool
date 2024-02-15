@@ -9,6 +9,6 @@ interface ILiquidationPoolManager {
     function HUNDRED_PC() external view returns (uint32);
     function poolFeePercentage() external view returns (uint32);
     function poolHolderLimit() external view returns (uint16);
-    function distributeAssets() external;
+    function distributeFees() external;
     function runLiquidation(uint256 _tokenId) external;
 }

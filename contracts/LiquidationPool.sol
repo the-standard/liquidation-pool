@@ -121,7 +121,7 @@ contract LiquidationPool is ILiquidationPool {
     function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         require(_tstVal > 0 || _eurosVal > 0);
         consolidatePendingStakes();
-        ILiquidationPoolManager(manager).distributeAssets();
+        ILiquidationPoolManager(manager).distributeFees();
         if (_tstVal > 0) IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
         if (_eurosVal > 0) IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
         pendingStakes[msg.sender].updatedAt = block.timestamp;
@@ -137,7 +137,7 @@ contract LiquidationPool is ILiquidationPool {
 
     function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
         consolidatePendingStakes();
-        ILiquidationPoolManager(manager).distributeAssets();
+        ILiquidationPoolManager(manager).distributeFees();
         require(_tstVal <= positions[msg.sender].TST && _eurosVal <= positions[msg.sender].EUROs, "invalid-decr-amount");
         if (_tstVal > 0) {
             IERC20(TST).safeTransfer(msg.sender, _tstVal);
