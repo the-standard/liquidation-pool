@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT } = require("./common");
+const { mockTokenManager, PRICE_EUR_USD, PRICE_ETH_USD, PRICE_WBTC_USD, PRICE_USDC_USD, COLLATERAL_RATE, HUNDRED_PC, TOKEN_ID, rewardAmountForAsset, fastForward, DAY, POOL_FEE_PERCENTAGE, TEST_HOLDER_LIMIT } = require("./common");
 
 describe('LiquidationPoolManager', async () => {
   let LiquidationPoolManager, LiquidationPoolManagerContract, LiquidationPool, MockSmartVaultManager, TokenManager,
@@ -17,7 +17,7 @@ describe('LiquidationPoolManager', async () => {
     const EurUsd = await (await ethers.getContractFactory('MockChainlink')).deploy(PRICE_EUR_USD, 'EUR/USD'); // $1.06
     LiquidationPoolManagerContract = await ethers.getContractFactory('LiquidationPoolManager');
     LiquidationPoolManager = await LiquidationPoolManagerContract.deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, TEST_HOLDER_LIMIT
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });

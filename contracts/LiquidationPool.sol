@@ -10,8 +10,6 @@ import "contracts/interfaces/ILiquidationPoolManager.sol";
 import "contracts/interfaces/ISmartVaultManager.sol";
 import "contracts/interfaces/ITokenManager.sol";
 
-import "hardhat/console.sol";
-
 contract LiquidationPool is ILiquidationPool {
     using SafeERC20 for IERC20;
 
@@ -76,7 +74,8 @@ contract LiquidationPool is ILiquidationPool {
         PendingStake memory _pendingStake = pendingStakes[_holder];
         _position.EUROs += _pendingStake.EUROs;
         _position.TST += _pendingStake.TST;
-        if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST / getTstTotal();
+        ILiquidationPoolManager _manager = ILiquidationPoolManager(manager);
+        if (_position.TST > 0) _position.EUROs += IERC20(EUROs).balanceOf(manager) * _position.TST * _manager.poolFeePercentage() / getTstTotal() / _manager.HUNDRED_PC();
         _rewards = findRewards(_holder);
     }
 

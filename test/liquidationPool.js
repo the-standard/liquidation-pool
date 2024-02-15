@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, POOL_HOLDER_LIMIT } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, TEST_HOLDER_LIMIT } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -16,7 +16,7 @@ describe('LiquidationPool', async () => {
     const { TokenManager } = await mockTokenManager();
     MockSmartVaultManager = await (await ethers.getContractFactory('MockSmartVaultManager')).deploy(COLLATERAL_RATE, TokenManager.address);
     LiquidationPoolManager = await (await ethers.getContractFactory('LiquidationPoolManager')).deploy(
-      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, POOL_HOLDER_LIMIT
+      TST.address, EUROs.address, MockSmartVaultManager.address, EurUsd.address, Protocol.address, POOL_FEE_PERCENTAGE, TEST_HOLDER_LIMIT
     );
     LiquidationPool = await ethers.getContractAt('LiquidationPool', await LiquidationPoolManager.pool());
   });
@@ -33,7 +33,7 @@ describe('LiquidationPool', async () => {
       expect(_position.EUROs).to.equal('0');
     });
 
-    it('does not include unclaimed EUROs fees for non-holders', async () => {
+    it('does not include undistributed EUROs fees for non-holders', async () => {
       const fees = ethers.utils.parseEther('100');
 
       await EUROs.mint(LiquidationPoolManager.address, fees);
@@ -41,6 +41,20 @@ describe('LiquidationPool', async () => {
       const { _position } = await LiquidationPool.position(user1.address);
       expect(_position.TST).to.equal(0);
       expect(_position.EUROs).to.equal(0);
+    });
+
+    it('correctly calculates undistributed EUROs fees', async () => {
+      const tstStake = await ethers.utils.parseEther('100');
+      await TST.mint(user1.address, tstStake);
+      await TST.connect(user1).approve(LiquidationPool.address, tstStake);
+      await LiquidationPool.connect(user1).increasePosition(tstStake, 0);
+
+      const fees = ethers.utils.parseEther('100');
+      await EUROs.mint(LiquidationPoolManager.address, fees);
+      
+      const expectedEUROsStake = fees.mul(POOL_FEE_PERCENTAGE).div(HUNDRED_PC);
+      const { _position } = await LiquidationPool.position(user1.address);
+      expect(_position.EUROs).to.equal(expectedEUROsStake);
     });
   });
 
@@ -149,7 +163,7 @@ describe('LiquidationPool', async () => {
       const signers = await ethers.getSigners();
       const tstStake = await ethers.utils.parseEther('100');
 
-      for (let i = 0; i < POOL_HOLDER_LIMIT; i++) {
+      for (let i = 0; i < TEST_HOLDER_LIMIT; i++) {
         const signer = signers[i];
         await TST.mint(signer.address, tstStake);
         await TST.connect(signer).approve(LiquidationPool.address, tstStake);
@@ -158,7 +172,7 @@ describe('LiquidationPool', async () => {
         await expect(increase).not.to.be.reverted;
       }
 
-      const signer = signers[POOL_HOLDER_LIMIT];
+      const signer = signers[TEST_HOLDER_LIMIT];
       await TST.mint(signer.address, tstStake);
       await TST.connect(signer).approve(LiquidationPool.address, tstStake);
 
