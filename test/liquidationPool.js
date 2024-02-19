@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, TEST_HOLDER_LIMIT } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, TEST_HOLDER_LIMIT, PRICE_ETH_USD, PRICE_EUR_USD, PRICE_WBTC_USD, PRICE_USDC_USD } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -363,6 +363,76 @@ describe('LiquidationPool', async () => {
       const feeAmount = ethers.utils.parseEther('100');
       await expect(LiquidationPool.distributeFees(feeAmount)).to.be.revertedWith('err-invalid-user');
       await expect(LiquidationPool.distributeAssets([], COLLATERAL_RATE, HUNDRED_PC)).to.be.revertedWith('err-invalid-user');
+    });
+  });
+
+  describe.only('emergency', async () => {
+    const stake = ethers.utils.parseEther('10000');
+    const wbtc = BigNumber.from(10000000);
+    const usdc = BigNumber.from(1000000000);
+
+    beforeEach(async () => {
+      await TST.mint(user1.address, stake);
+      await EUROs.mint(user1.address, stake);
+      await TST.connect(user1).approve(LiquidationPool.address, stake);
+      await EUROs.connect(user1).approve(LiquidationPool.address, stake);
+      await LiquidationPool.connect(user1).increasePosition(stake, stake);
+
+      await fastForward(DAY);
+
+      await USDC.mint(LiquidationPoolManager.address, usdc);
+      await WBTC.mint(LiquidationPoolManager.address, wbtc);
+
+      await LiquidationPoolManager.rewardDrop();
+
+      await TST.mint(user1.address, stake);
+      await EUROs.mint(user1.address, stake);
+      await TST.connect(user1).approve(LiquidationPool.address, stake);
+      await EUROs.connect(user1).approve(LiquidationPool.address, stake);
+      await LiquidationPool.connect(user1).increasePosition(stake, stake);
+    });
+
+    it('is not in emergency by default', async () => {
+      expect(await LiquidationPool.emergency()).to.equal(false);
+    });
+
+    it('does not allow users to set emergency', async () => {
+      await expect(LiquidationPool.setEmergency(true)).to.be.revertedWith('err-invalid-user');
+    });
+
+    it('does not allow users to perform emergency actions', async () => {
+      await expect(LiquidationPool.emergencyRemoveStake()).to.be.revertedWith('err-not-emergency');
+    });
+
+    context('in emergency', async () => {
+      beforeEach(async () => {
+        await LiquidationPoolManager.setEmergency(true);
+      });
+
+      it('does not allow increasing or decreasing of position', async () => {
+        await expect(LiquidationPool.connect(user1).increasePosition(stake, stake)).to.be.revertedWith('err-emergency');
+        await expect(LiquidationPool.connect(user1).decreasePosition(stake, stake)).to.be.revertedWith('err-emergency');
+
+        await expect(LiquidationPool.emergencyRemoveStake()).not.to.be.reverted;
+
+        const expectedEUROsRemaining = stake.mul(2)
+          .sub(wbtc.mul(BigNumber.from(10).pow(10)).mul(PRICE_WBTC_USD).div(PRICE_EUR_USD).mul(HUNDRED_PC).div(COLLATERAL_RATE))
+          .sub(usdc.mul(BigNumber.from(10).pow(12)).mul(PRICE_USDC_USD).div(PRICE_EUR_USD).mul(HUNDRED_PC).div(COLLATERAL_RATE));
+
+        expect(await TST.balanceOf(user1.address)).to.equal(stake.mul(2));
+        expect(await EUROs.balanceOf(user1.address)).to.equal(expectedEUROsRemaining);
+        expect(await WBTC.balanceOf(user1.address)).to.equal(wbtc);
+        expect(await USDC.balanceOf(user1.address)).to.equal(usdc);
+
+        const { _position, _rewards } = await LiquidationPool.position(user1.address);
+        expect(_position.EUROs).to.equal(0);
+        expect(_position.TST).to.equal(0);
+
+        for (let i = 0; i < _rewards.length; i++) {
+          const reward = _rewards[i];
+          expect(reward.amount).to.equal(0);
+        }
+      }); 
     });
   });
 });
