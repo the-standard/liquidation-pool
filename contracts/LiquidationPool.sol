@@ -23,6 +23,7 @@ contract LiquidationPool is ILiquidationPool {
     mapping(bytes => uint256) private rewards;
     address payable public manager;
     address public tokenManager;
+    bool public emergency;
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { bytes32 symbol; uint256 amount; uint8 dec; }
@@ -38,6 +39,16 @@ contract LiquidationPool is ILiquidationPool {
 
     modifier onlyManager {
         require(msg.sender == manager, "err-invalid-user");
+        _;
+    }
+
+    modifier ifEmergency {
+        require(emergency, "err-not-emergency");
+        _;
+    }
+
+    modifier ifNotEmergency {
+        require(!emergency, "err-emergency");
         _;
     }
 
@@ -104,7 +115,7 @@ contract LiquidationPool is ILiquidationPool {
         holders.push(_holder);
     }
 
-    function consolidatePendingStakes() private {
+    function consolidatePendingStakes() external {
         uint256 deadline = block.timestamp - 1 days;
         for (uint256 i = 0; i < holders.length; i++) {
             address _holder = holders[i];
@@ -118,9 +129,8 @@ contract LiquidationPool is ILiquidationPool {
         }
     }
 
-    function increasePosition(uint256 _tstVal, uint256 _eurosVal) external {
+    function increasePosition(uint256 _tstVal, uint256 _eurosVal) external ifNotEmergency {
         require(_tstVal > 0 || _eurosVal > 0);
-        consolidatePendingStakes();
         ILiquidationPoolManager(manager).distributeFees();
         if (_tstVal > 0) IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
         if (_eurosVal > 0) IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
@@ -135,8 +145,7 @@ contract LiquidationPool is ILiquidationPool {
         delete positions[_position.holder];
     }
 
-    function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external {
-        consolidatePendingStakes();
+    function decreasePosition(uint256 _tstVal, uint256 _eurosVal) external ifNotEmergency {
         ILiquidationPoolManager(manager).distributeFees();
         require(_tstVal <= positions[msg.sender].TST && _eurosVal <= positions[msg.sender].EUROs, "invalid-decr-amount");
         if (_tstVal > 0) {
@@ -150,7 +159,7 @@ contract LiquidationPool is ILiquidationPool {
         if (emptyPositions(msg.sender)) deletePosition(positions[msg.sender]);
     }
 
-    function claimRewards() external {
+    function claimRewards() public {
         ITokenManager.Token[] memory _tokens = ITokenManager(tokenManager).getAcceptedTokens();
         for (uint256 i = 0; i < _tokens.length; i++) {
             ITokenManager.Token memory _token = _tokens[i];
@@ -190,7 +199,6 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable onlyManager {
-        consolidatePendingStakes();
         (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
         uint256 stakeTotal = getStakeTotal();
         uint256 burnEuros;
@@ -225,5 +233,24 @@ contract LiquidationPool is ILiquidationPool {
         }
         if (burnEuros > 0) IEUROs(EUROs).burn(address(this), burnEuros);
         returnUnpurchasedNative(_assets, nativePurchased);
+    }
+
+    function emergencyRemoveStake() external ifEmergency {
+        claimRewards();
+        Position memory _position = positions[msg.sender];
+        PendingStake memory _pendingStake = pendingStakes[msg.sender];
+        if (_position.TST > 0 || _pendingStake.TST > 0) {
+            IERC20(TST).safeTransfer(msg.sender, _position.TST + _pendingStake.TST);
+        }
+        if (_position.EUROs > 0 || _pendingStake.EUROs > 0) {
+            IERC20(EUROs).safeTransfer(msg.sender, _position.EUROs + _pendingStake.EUROs);
+        }
+        delete positions[msg.sender];
+        delete pendingStakes[msg.sender];
+        deleteHolder(msg.sender);
+    }
+
+    function setEmergency(bool _emergency) external onlyManager() {
+        emergency = _emergency;
     }
 }

@@ -456,6 +456,22 @@ describe('LiquidationPoolManager', async () => {
       expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(usdc);
     });
   });
+
+  describe('setEmergency', async () => {
+    it('allows owner to set pool emergency', async () => {
+      await expect(LiquidationPoolManager.connect(holder2).setEmergency(true)).to.be.revertedWithCustomError(
+        LiquidationPoolManagerContract, 'OwnableUnauthorizedAccount'
+      );
+
+      await expect(LiquidationPoolManager.connect(holder1).setEmergency(true)).not.to.be.reverted;
+
+      expect(await LiquidationPool.emergency()).to.equal(true);
+
+      await expect(LiquidationPoolManager.connect(holder1).setEmergency(false)).not.to.be.reverted;
+
+      expect(await LiquidationPool.emergency()).to.equal(false);
+    })
+  });
   
   // it('can support x amount of stakers', async () => {
   //   const signers = await ethers.getSigners();
