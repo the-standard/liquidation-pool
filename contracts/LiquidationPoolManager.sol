@@ -98,6 +98,7 @@ contract LiquidationPoolManager is Ownable {
     }
 
     function rewardDrop() external onlyOwner() {
+        LiquidationPool(pool).consolidatePendingStakes();
         forwardAssetsToPool();
     }
 

@@ -423,6 +423,41 @@ describe('LiquidationPoolManager', async () => {
       expect(await USDC.balanceOf(Protocol.address)).to.equal(usdc);
     });
   });
+
+  describe('rewardDrop', async () => {
+    it.only('forwards any reward assets sitting in the liquidation pool manager to the pool', async () => {
+      const tstStake = ethers.utils.parseEther('1000');
+      const eurosStake = ethers.utils.parseEther('2000');
+      await TST.mint(holder1.address, tstStake);
+      await EUROs.mint(holder1.address, eurosStake);
+      await TST.connect(holder1).approve(LiquidationPool.address, tstStake);
+      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
+      await LiquidationPool.connect(holder1).increasePosition(tstStake, eurosStake);
+
+      await fastForward(DAY);
+
+      const eth = ethers.utils.parseEther('0.05');
+      const wbtc = 500000;
+      const usdc = 10000000;
+      await holder5.sendTransaction({to: LiquidationPoolManager.address, value: eth});
+      await WBTC.mint(LiquidationPoolManager.address, wbtc);
+      await USDC.mint(LiquidationPoolManager.address, usdc);
+
+      await expect(LiquidationPoolManager.connect(holder5).rewardDrop()).to.be.revertedWithCustomError(
+        LiquidationPoolManagerContract, 'OwnableUnauthorizedAccount'
+      );
+
+      await expect(LiquidationPoolManager.connect(holder1).rewardDrop()).not.to.be.reverted;
+
+      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+
+      expect(await ethers.provider.getBalance(LiquidationPool.address)).to.equal(eth);
+      expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(wbtc);
+      expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(usdc);
+    });
+  });
   
   // it('can support x amount of stakers', async () => {
   //   const signers = await ethers.getSigners();
