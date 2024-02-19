@@ -273,7 +273,7 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.balanceOf(LiquidationPool.address)).to.equal(expectedFeesInPool.sub(expectedEUROsSpent));
     });
 
-    it('returns unpurchased liquidated assets to protocol address', async () => {
+    it('holds unpurchased assets in pool manager address', async () => {
       // create "liquidation" funds
       const ethCollateral = ethers.utils.parseEther('0.1');
       const wbtcCollateral = BigNumber.from(2_000_000);
@@ -339,15 +339,13 @@ describe('LiquidationPoolManager', async () => {
       // all ETH should have moved to pool
       expect(await await ethers.provider.getBalance(LiquidationPool.address)).to.equal(ethCollateral);
       expect(await await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
-      // some WBTC should have moved to pool, some forwarded to protocol wallet
+      // some wbtc unpurchased, remains in pool
       const expectedWBTCInPool = expectedWBTCPurchased1.add(expectedWBTCPurchased2);
       expect(await WBTC.balanceOf(LiquidationPool.address)).to.equal(expectedWBTCInPool);
-      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-      expect(await WBTC.balanceOf(Protocol.address)).to.equal(wbtcCollateral.sub(expectedWBTCInPool));
-      // all USDC should have been forwarded to protocol wallet
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(wbtcCollateral.sub(expectedWBTCInPool));
+      // all usdc unpurchased, remains in pool
       expect(await USDC.balanceOf(LiquidationPool.address)).to.equal(0);
-      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-      expect(await USDC.balanceOf(Protocol.address)).to.equal(usdcCollateral);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(usdcCollateral);
     });
 
     it('increases existing rewards with multiple liquidations', async () => {
@@ -425,7 +423,7 @@ describe('LiquidationPoolManager', async () => {
   });
 
   describe('rewardDrop', async () => {
-    it.only('forwards any reward assets sitting in the liquidation pool manager to the pool', async () => {
+    it('forwards any reward assets sitting in the liquidation pool manager to the pool', async () => {
       const tstStake = ethers.utils.parseEther('1000');
       const eurosStake = ethers.utils.parseEther('2000');
       await TST.mint(holder1.address, tstStake);
