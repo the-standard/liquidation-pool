@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BigNumber } = ethers;
-const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, TEST_HOLDER_LIMIT, PRICE_ETH_USD, PRICE_EUR_USD, PRICE_WBTC_USD, PRICE_USDC_USD } = require("./common");
+const { mockTokenManager, COLLATERAL_RATE, TOKEN_ID, rewardAmountForAsset, DAY, fastForward, POOL_FEE_PERCENTAGE, HUNDRED_PC, TEST_HOLDER_LIMIT, PRICE_EUR_USD, PRICE_WBTC_USD, PRICE_USDC_USD } = require("./common");
 
 describe('LiquidationPool', async () => {
   let user1, user2, user3, Protocol, LiquidationPoolManager, LiquidationPool, MockSmartVaultManager,
@@ -366,7 +366,7 @@ describe('LiquidationPool', async () => {
     });
   });
 
-  describe.only('emergency', async () => {
+  describe('emergency', async () => {
     const stake = ethers.utils.parseEther('10000');
     const wbtc = BigNumber.from(10000000);
     const usdc = BigNumber.from(1000000000);
@@ -430,7 +430,7 @@ describe('LiquidationPool', async () => {
 
         for (let i = 0; i < _rewards.length; i++) {
           const reward = _rewards[i];
-          expect(reward.amount).to.equal(0);
+          expect(reward.amount).to.equal(0); 
         }
       }); 
     });
