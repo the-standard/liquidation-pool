@@ -35,7 +35,7 @@ contract LiquidationPoolManager is Ownable {
 
     receive() external payable {}
 
-    function distributeFees() public {
+    function distributeEUROsFees() private {
         IERC20 eurosToken = IERC20(EUROs);
         uint256 _feesForPool = eurosToken.balanceOf(address(this)) * poolFeePercentage / HUNDRED_PC;
         if (_feesForPool > 0) {
@@ -45,7 +45,42 @@ contract LiquidationPoolManager is Ownable {
         eurosToken.transfer(protocol, eurosToken.balanceOf(address(this)));
     }
 
-    function returnAssetsToProtocol() private {
+    function forwardAssetsToPool() private {
+        bool distribute;
+        ISmartVaultManager _manager = ISmartVaultManager(smartVaultManager);
+        ITokenManager.Token[] memory tokens = ITokenManager(_manager.tokenManager()).getAcceptedTokens();
+        ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
+        uint256 ethBalance;
+        for (uint256 i = 0; i < tokens.length; i++) {
+            ITokenManager.Token memory token = tokens[i];
+            if (token.addr == address(0)) {
+                ethBalance = address(this).balance;
+                if (ethBalance > 0) {
+                    assets[i] = ILiquidationPoolManager.Asset(token, ethBalance);
+                    distribute = true;
+                }
+            } else {
+                IERC20 ierc20 = IERC20(token.addr);
+                uint256 erc20balance = ierc20.balanceOf(address(this));
+                if (erc20balance > 0) {
+                    assets[i] = ILiquidationPoolManager.Asset(token, erc20balance);
+                    ierc20.approve(pool, erc20balance);
+                    distribute = true;
+                }
+            }
+        }
+        if (distribute) {
+            LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, _manager.collateralRate(), _manager.HUNDRED_PC());
+        }
+    }
+
+    function distributeFees() external {
+        LiquidationPool(pool).consolidatePendingStakes();
+        distributeEUROsFees();
+        forwardAssetsToPool();
+    }
+
+    function refundAssetsToProtocol() external onlyOwner() {
         ITokenManager.Token[] memory _tokens = ITokenManager(ISmartVaultManager(smartVaultManager).tokenManager()).getAcceptedTokens();
         for (uint256 i = 0; i < _tokens.length; i++) {
             ITokenManager.Token memory _token = _tokens[i];
@@ -62,40 +97,13 @@ contract LiquidationPoolManager is Ownable {
         }
     }
 
-    function forwardAssetsToPool() private {
-        ISmartVaultManager _manager = ISmartVaultManager(smartVaultManager);
-        ITokenManager.Token[] memory tokens = ITokenManager(_manager.tokenManager()).getAcceptedTokens();
-        ILiquidationPoolManager.Asset[] memory assets = new ILiquidationPoolManager.Asset[](tokens.length);
-        uint256 ethBalance;
-        for (uint256 i = 0; i < tokens.length; i++) {
-            ITokenManager.Token memory token = tokens[i];
-            if (token.addr == address(0)) {
-                ethBalance = address(this).balance;
-                if (ethBalance > 0) assets[i] = ILiquidationPoolManager.Asset(token, ethBalance);
-            } else {
-                IERC20 ierc20 = IERC20(token.addr);
-                uint256 erc20balance = ierc20.balanceOf(address(this));
-                if (erc20balance > 0) {
-                    assets[i] = ILiquidationPoolManager.Asset(token, erc20balance);
-                    ierc20.approve(pool, erc20balance);
-                }
-            }
-        }
-        LiquidationPool(pool).distributeAssets{value: ethBalance}(assets, _manager.collateralRate(), _manager.HUNDRED_PC());
-        returnAssetsToProtocol();
-    }
-
-    function refundAssetsToProtocol() external onlyOwner() {
-        returnAssetsToProtocol();
-    }
-
     function rewardDrop() external onlyOwner() {
         forwardAssetsToPool();
     }
 
     function runLiquidation(uint256 _tokenId) external {
-        distributeFees();
-        returnAssetsToProtocol();
+        LiquidationPool(pool).consolidatePendingStakes();
+        distributeEUROsFees();
         ISmartVaultManager manager = ISmartVaultManager(smartVaultManager);
         manager.liquidateVault(_tokenId);
         forwardAssetsToPool();
@@ -111,5 +119,9 @@ contract LiquidationPoolManager is Ownable {
 
     function setProtocol(address payable _protocol) external onlyOwner {
         protocol = _protocol;
+    }
+
+    function setEmergency(bool _emergency) external onlyOwner {
+        LiquidationPool(pool).setEmergency(_emergency);
     }
 }

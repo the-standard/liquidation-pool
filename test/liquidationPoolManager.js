@@ -245,42 +245,6 @@ describe('LiquidationPoolManager', async () => {
       expect(await EUROs.totalSupply()).to.equal(estimatedSupply);
     });
 
-    it('forwards fees and rewards to protocol if there is no tst staked in pool', async () => {
-      const fees = ethers.utils.parseEther('1000');
-      const ethCollateral = ethers.utils.parseEther('0.1');
-      const wbtcCollateral = BigNumber.from(1_000_000);
-      const usdcCollateral = BigNumber.from(100_000_000);
-
-      await holder1.sendTransaction({to: MockSmartVaultManager.address, value: ethCollateral});
-      await WBTC.mint(MockSmartVaultManager.address, wbtcCollateral);
-      await USDC.mint(MockSmartVaultManager.address, usdcCollateral);
-
-      const eurosStake = ethers.utils.parseEther('1000');
-      await EUROs.mint(holder1.address, eurosStake);
-      await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
-      await LiquidationPool.connect(holder1).increasePosition(0, eurosStake);
-
-      await EUROs.mint(LiquidationPoolManager.address, fees);
-
-      const protocolBalance = await ethers.provider.getBalance(Protocol.address);
-
-      await LiquidationPoolManager.runLiquidation(TOKEN_ID);
-
-      expect(await EUROs.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
-      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
-
-      const { _position } = await LiquidationPool.position(holder1.address);
-      expect(_position.TST).to.equal(0);
-      expect(_position.EUROs).to.equal(eurosStake);
-
-      expect(await EUROs.balanceOf(Protocol.address)).to.equal(fees);
-      expect(await ethers.provider.getBalance(Protocol.address)).to.equal(protocolBalance.add(ethCollateral));
-      expect(await WBTC.balanceOf(Protocol.address)).to.equal(wbtcCollateral);
-      expect(await USDC.balanceOf(Protocol.address)).to.equal(usdcCollateral);
-    });
-
     it('distributes fees before running liquidation', async () => {
       // create "liquidation" funds
       const ethCollateral = ethers.utils.parseEther('0.05');
@@ -400,7 +364,7 @@ describe('LiquidationPoolManager', async () => {
       await EUROs.mint(holder1.address, eurosStake);
       await TST.connect(holder1).approve(LiquidationPool.address, tstStake);
       await EUROs.connect(holder1).approve(LiquidationPool.address, eurosStake);
-      await LiquidationPool.connect(holder1).increasePosition(tstStake, eurosStake)
+      await LiquidationPool.connect(holder1).increasePosition(tstStake, eurosStake);
 
       await fastForward(DAY);
 
@@ -432,15 +396,51 @@ describe('LiquidationPoolManager', async () => {
       expect(rewardAmountForAsset(_rewards, 'WBTC')).to.equal(wbtcCollateral);
       expect(rewardAmountForAsset(_rewards, 'USDC')).to.equal(usdcCollateral);
     });
-  })
+  });
+
+  describe('refundAssetsToProtocol', async () => {
+    it('returns any reward assets sitting in the liquidation pool manager to the protocol', async () => {
+      const holder1Balance = await ethers.provider.getBalance(Protocol.address);
+      const eth = ethers.utils.parseEther('0.05');
+      const wbtc = 500000;
+      const usdc = 10000000;
+      await holder5.sendTransaction({to: LiquidationPoolManager.address, value: eth});
+      await WBTC.mint(LiquidationPoolManager.address, wbtc);
+      await USDC.mint(LiquidationPoolManager.address, usdc);
+
+      await expect(LiquidationPoolManager.connect(holder5).refundAssetsToProtocol()).to.be.revertedWithCustomError(
+        LiquidationPoolManagerContract, 'OwnableUnauthorizedAccount'
+      );
+
+      await expect(LiquidationPoolManager.connect(holder1).refundAssetsToProtocol()).not.to.be.reverted;
+
+      expect(await ethers.provider.getBalance(LiquidationPoolManager.address)).to.equal(0);
+      expect(await WBTC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+      expect(await USDC.balanceOf(LiquidationPoolManager.address)).to.equal(0);
+
+      expect((await ethers.provider.getBalance(Protocol.address)).sub(holder1Balance)).to.equal(eth);
+      expect(await WBTC.balanceOf(Protocol.address)).to.equal(wbtc);
+      expect(await USDC.balanceOf(Protocol.address)).to.equal(usdc);
+    });
+  });
   
   // it('can support x amount of stakers', async () => {
   //   const signers = await ethers.getSigners();
 
   //   for (let i = 0; i < signers.length; i++) {
   //     console.log(i)
-  //     const fees = await ethers.utils.parseEther('10');
+  //     const fees = ethers.utils.parseEther('10');
+  //     const eth = ethers.utils.parseEther((Math.round((Math.random() * 10)) / 1000).toString());
+  //     const wbtc = Math.floor(Math.random() * 10000);
+  //     const usd = Math.floor(Math.random() * 1000000);
   //     await EUROs.mint(LiquidationPoolManager.address, fees)
+
+  //     if (i % 10 === 0) {
+  //       await holder5.sendTransaction({to: LiquidationPoolManager.address, value: eth});
+  //       await WBTC.mint(LiquidationPoolManager.address, wbtc);
+  //       await USDC.mint(LiquidationPoolManager.address, usd);
+  //     }
+
   //     const signer = signers[i];
   //     const stakeValue = ethers.utils.parseEther('500');
   //     await TST.mint(signer.address, stakeValue);
@@ -450,20 +450,26 @@ describe('LiquidationPoolManager', async () => {
   //     console.log('increase gas',await LiquidationPool.connect(signer).estimateGas.increasePosition(stakeValue, stakeValue))
   //     await LiquidationPool.connect(signer).increasePosition(stakeValue, stakeValue);
   //     await fastForward(DAY);
+      
+  //     if (i % 7 === 0) {
+  //       console.log(`position ${i / 7}`,await LiquidationPool.position(signers[i / 7].address));
+  //     }
 
-  //     await holder5.sendTransaction({to: MockSmartVaultManager.address, value: ethers.utils.parseEther('0.1')});
-  //     await WBTC.mint(MockSmartVaultManager.address, 1000000);
-  //     await USDC.mint(MockSmartVaultManager.address, 10000000);
+  //     if (i % 100 === 0) {        
+  //       console.log('liquidation')
+  //       await holder5.sendTransaction({to: MockSmartVaultManager.address, value: eth.mul(10)});
+  //       await WBTC.mint(MockSmartVaultManager.address, wbtc * 10);
+  //       await USDC.mint(MockSmartVaultManager.address, usd * 10);
+  //       console.log('liquidation gas',await LiquidationPoolManager.estimateGas.runLiquidation(TOKEN_ID));
+  //       await LiquidationPoolManager.runLiquidation(TOKEN_ID);
+  //       console.log(await LiquidationPool.position(signer.address))
+  //     }
 
-  //     console.log('liquidation gas',await LiquidationPoolManager.estimateGas.runLiquidation(TOKEN_ID))
-  //     await LiquidationPoolManager.runLiquidation(TOKEN_ID)
-
-  //     console.log('claim gas',await LiquidationPool.connect(signer).estimateGas.claimRewards())
   //     await LiquidationPool.connect(signer).claimRewards();
-  //     console.log('decrease gas',await LiquidationPool.connect(signer).estimateGas.decreasePosition(ethers.utils.parseEther('250'), ethers.utils.parseEther('5')))
-  //     await LiquidationPool.connect(signer).decreasePosition(ethers.utils.parseEther('250'), ethers.utils.parseEther('5'));
-
-  //     console.log((await LiquidationPool.position(signer.address))._position);
+  //     const decrTST = ethers.utils.parseEther((Math.floor(Math.random() * 250)).toString())
+  //     const decrEUROs = ethers.utils.parseEther((Math.floor(Math.random() * 5)).toString())
+  //     console.log('decrease gas',await LiquidationPool.connect(signer).estimateGas.decreasePosition(decrTST, decrEUROs))
+  //     await LiquidationPool.connect(signer).decreasePosition(decrTST, decrEUROs);
   //   }
   // });
 });
