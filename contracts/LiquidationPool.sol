@@ -15,7 +15,6 @@ contract LiquidationPool is ILiquidationPool {
 
     address private immutable TST;
     address private immutable EUROs;
-    address private immutable eurUsd;
 
     address[] public holders;
     mapping(address => Position) private positions;
@@ -29,10 +28,9 @@ contract LiquidationPool is ILiquidationPool {
     struct Reward { bytes32 symbol; uint256 amount; uint8 dec; }
     struct PendingStake { uint256 updatedAt; uint256 TST; uint256 EUROs; }
 
-    constructor(address _TST, address _EUROs, address _eurUsd, address _tokenManager) {
+    constructor(address _TST, address _EUROs, address _tokenManager) {
         TST = _TST;
         EUROs = _EUROs;
-        eurUsd = _eurUsd;
         tokenManager = _tokenManager;
         manager = payable(msg.sender);
     }
@@ -199,7 +197,7 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function distributeAssets(ILiquidationPoolManager.Asset[] memory _assets, uint256 _collateralRate, uint256 _hundredPC) external payable onlyManager {
-        (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(eurUsd).latestRoundData();
+        (,int256 priceEurUsd,,,) = Chainlink.AggregatorV3Interface(ILiquidationPoolManager(manager).eurUsd()).latestRoundData();
         uint256 stakeTotal = getStakeTotal();
         uint256 burnEuros;
         uint256 nativePurchased;
