@@ -26,7 +26,7 @@ contract LiquidationPool is ILiquidationPool {
 
     struct Position {  address holder; uint256 TST; uint256 EUROs; }
     struct Reward { bytes32 symbol; uint256 amount; uint8 dec; }
-    struct PendingStake { uint256 updatedAt; uint256 TST; uint256 EUROs; }
+    struct PendingStake { uint256 pendingUntil; uint256 TST; uint256 EUROs; }
 
     constructor(address _TST, address _EUROs, address _tokenManager) {
         TST = _TST;
@@ -77,10 +77,10 @@ contract LiquidationPool is ILiquidationPool {
         return _rewards;
     }
     
-    function position(address _holder) external view returns(Position memory _position, Reward[] memory _rewards) {
+    function position(address _holder) external view returns(Position memory _position, PendingStake memory _pendingStake, Reward[] memory _rewards) {
         _position = positions[_holder];
         _position.holder = _holder;
-        PendingStake memory _pendingStake = pendingStakes[_holder];
+        _pendingStake = pendingStakes[_holder];
         _position.EUROs += _pendingStake.EUROs;
         _position.TST += _pendingStake.TST;
         ILiquidationPoolManager _manager = ILiquidationPoolManager(manager);
@@ -114,11 +114,10 @@ contract LiquidationPool is ILiquidationPool {
     }
 
     function consolidatePendingStakes() external {
-        uint256 deadline = block.timestamp - 1 days;
         for (uint256 i = 0; i < holders.length; i++) {
             address _holder = holders[i];
             PendingStake memory _pendingStake = pendingStakes[_holder];
-            if (_pendingStake.updatedAt < deadline) {
+            if (_pendingStake.pendingUntil < block.timestamp) {
                 positions[_holder].holder = _holder;
                 positions[_holder].TST += _pendingStake.TST;
                 positions[_holder].EUROs += _pendingStake.EUROs;
@@ -132,7 +131,7 @@ contract LiquidationPool is ILiquidationPool {
         ILiquidationPoolManager(manager).distributeFees();
         if (_tstVal > 0) IERC20(TST).safeTransferFrom(msg.sender, address(this), _tstVal);
         if (_eurosVal > 0) IERC20(EUROs).safeTransferFrom(msg.sender, address(this), _eurosVal);
-        pendingStakes[msg.sender].updatedAt = block.timestamp;
+        pendingStakes[msg.sender].pendingUntil = block.timestamp + 1 days;
         pendingStakes[msg.sender].TST += _tstVal;
         pendingStakes[msg.sender].EUROs += _eurosVal;
         addUniqueHolder(msg.sender);

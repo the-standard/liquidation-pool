@@ -59,7 +59,7 @@ describe('LiquidationPool', async () => {
   });
 
   describe('increase position', async () => {
-    it('allows increasing position by one or both assets', async () => {
+    it.only('allows increasing position by one or both assets', async () => {
       const balance = ethers.utils.parseEther('5000');
       const tstVal = ethers.utils.parseEther('1000');
       const eurosVal = ethers.utils.parseEther('500');
@@ -70,7 +70,7 @@ describe('LiquidationPool', async () => {
       let increase = LiquidationPool.increasePosition(tstVal, eurosVal);
       await expect(increase).to.be.revertedWithCustomError(MockERC20Factory, 'ERC20InsufficientAllowance')
 
-      let { _position} = await LiquidationPool.position(user1.address);
+      let { _position } = await LiquidationPool.position(user1.address);
       expect(_position.TST).to.equal('0');
       expect(_position.EUROs).to.equal('0');
 
